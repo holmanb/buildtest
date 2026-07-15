@@ -1,0 +1,30 @@
+# Pebble user socket
+#
+# This systemd user socket unit provides socket activation for the Pebble
+# service manager. When a client connects to the Pebble Unix socket, systemd
+# starts pebble.service and passes the already-listening socket as a file
+# descriptor (SD_LISTEN_FDS). This allows Pebble to idle (exit with code 42)
+# and be restarted on demand, reducing memory usage when idle.
+#
+# Install to ~/.config/systemd/user/ or copy to /etc/systemd/user/ for all users.
+#
+# Usage:
+#   systemctl --user enable --now pebble.socket
+#   systemctl --user status pebble.socket
+#   systemctl --user stop pebble.socket
+#
+# Note: When using socket activation, enable/start pebble.socket (not
+# pebble.service). Starting the socket unit will also start the service on
+# first connection. The service will exit with code 42 when idle, and systemd
+# will restart it on the next connection to the socket.
+
+[Unit]
+Description=Pebble API socket
+Documentation=https://github.com/canonical/pebble
+
+[Socket]
+ListenStream=%h/.local/share/pebble/default/.pebble.socket
+SocketMode=0666
+
+[Install]
+WantedBy=sockets.target

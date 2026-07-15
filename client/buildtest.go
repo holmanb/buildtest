@@ -20,6 +20,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -27,6 +28,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/canonical/pebble/internals/wsutil"
 )
 
 // BuildTestOptions holds the options for a build-test request.
@@ -37,6 +40,16 @@ type BuildTestOptions struct {
 
 	// Timeout is the optional overall timeout for the operation.
 	Timeout time.Duration
+
+	// Stdout is an optional writer for streaming build/test stdout output.
+	// If set, output is streamed in real-time via websockets. If nil, output
+	// is captured and returned in the result.
+	Stdout io.Writer
+
+	// Stderr is an optional writer for streaming build/test stderr output.
+	// If set, output is streamed in real-time via websockets. If nil, output
+	// is captured and returned in the result.
+	Stderr io.Writer
 }
 
 // BuildTestResult holds the result of a build-test request.
@@ -128,7 +141,14 @@ func (client *Client) BuildTest(opts *BuildTestOptions) (*BuildTestResult, error
 		return nil, err
 	}
 
-	// Wait for the change to complete.
+	// Determine if we should stream output via websockets.
+	streaming := opts.Stdout != nil || opts.Stderr != nil
+
+	if streaming {
+		return client.buildTestStreaming(resp.ChangeID, opts)
+	}
+
+	// Non-streaming: wait for the change to complete and extract results.
 	waitOpts := &WaitChangeOptions{}
 	if opts.Timeout != 0 {
 		waitOpts.Timeout = opts.Timeout + 30*time.Second // extra buffer beyond command timeout
@@ -138,7 +158,7 @@ func (client *Client) BuildTest(opts *BuildTestOptions) (*BuildTestResult, error
 		return nil, fmt.Errorf("cannot wait for build-test to complete: %w", err)
 	}
 	if change.Err != "" {
-		return nil, fmt.Errorf("build-test change failed: %s", change.Err)
+		return nil, errors.New(change.Err)
 	}
 
 	// Extract results from the change's tasks.
@@ -161,6 +181,91 @@ func (client *Client) BuildTest(opts *BuildTestOptions) (*BuildTestResult, error
 	}
 
 	return result, nil
+}
+
+// buildTestStreaming handles the streaming case where Stdout/Stderr writers
+// are provided. It connects to websockets for each task and streams output
+// in real-time, then waits for the change to complete.
+func (client *Client) buildTestStreaming(changeID string, opts *BuildTestOptions) (*BuildTestResult, error) {
+	// Wait for the change to be ready enough to get task IDs.
+	waitOpts := &WaitChangeOptions{}
+	if opts.Timeout != 0 {
+		waitOpts.Timeout = opts.Timeout + 30*time.Second
+	}
+	change, err := client.WaitChange(changeID, waitOpts)
+	if err != nil {
+		return nil, fmt.Errorf("cannot wait for build-test to complete: %w", err)
+	}
+	if change.Err != "" {
+		return nil, errors.New(change.Err)
+	}
+
+	// Connect to websockets for each task and stream output.
+	result := &BuildTestResult{}
+	var writesDone []chan bool
+
+	for _, task := range change.Tasks {
+		switch task.Kind {
+		case "build-test-build":
+			buildStdoutDone, buildStderrDone := client.streamTaskOutput(task.ID, "build", opts.Stdout, opts.Stderr)
+			if buildStdoutDone != nil {
+				writesDone = append(writesDone, buildStdoutDone)
+			}
+			if buildStderrDone != nil {
+				writesDone = append(writesDone, buildStderrDone)
+			}
+			result.Build = BuildResult{
+				ExitCode: taskGetInt(task, "exit-code"),
+			}
+		case "build-test-run":
+			runStdoutDone, runStderrDone := client.streamTaskOutput(task.ID, "run", opts.Stdout, opts.Stderr)
+			if runStdoutDone != nil {
+				writesDone = append(writesDone, runStdoutDone)
+			}
+			if runStderrDone != nil {
+				writesDone = append(writesDone, runStderrDone)
+			}
+			result.Run = &RunResult{
+				ExitCode: taskGetInt(task, "exit-code"),
+			}
+		}
+	}
+
+	// Wait for all streaming output to be flushed.
+	for _, done := range writesDone {
+		<-done
+	}
+
+	return result, nil
+}
+
+// streamTaskOutput connects to the stdout and stderr websockets for a task
+// and streams output to the provided writers. Returns channels that are
+// closed when streaming is done for each websocket.
+func (client *Client) streamTaskOutput(taskID, prefix string, stdout, stderr io.Writer) (stdoutDone, stderrDone chan bool) {
+	if stdout != nil {
+		stdoutConn, err := client.getTaskWebsocket(taskID, prefix+"-stdout")
+		if err == nil {
+			stdoutDone = wsutil.WebsocketRecvStream(stdout, stdoutConn)
+			go func() {
+				<-stdoutDone
+				_ = stdoutConn.Close()
+			}()
+		}
+	}
+
+	if stderr != nil {
+		stderrConn, err := client.getTaskWebsocket(taskID, prefix+"-stderr")
+		if err == nil {
+			stderrDone = wsutil.WebsocketRecvStream(stderr, stderrConn)
+			go func() {
+				<-stderrDone
+				_ = stderrConn.Close()
+			}()
+		}
+	}
+
+	return stdoutDone, stderrDone
 }
 
 // taskGetString extracts a string value from a task's data, returning "" if not found.

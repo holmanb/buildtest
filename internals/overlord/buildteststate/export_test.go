@@ -15,11 +15,13 @@
 package buildteststate
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"gopkg.in/tomb.v2"
 
 	"github.com/canonical/pebble/internals/overlord/state"
@@ -31,16 +33,22 @@ var (
 	RunTaskKind   = runTaskKind
 )
 
+// Export for testing.
+const (
+	ExportedBuildEdge  = BuildEdge
+	ExportedRunEdge    = RunEdge
+	MaxOutputSize      = maxOutputSize
+	WsBuildStdoutExport = WsBuildStdout
+	WsBuildStderrExport = WsBuildStderr
+	WsRunStdoutExport   = WsRunStdout
+	WsRunStderrExport   = WsRunStderr
+	ConnectTimeoutExport = connectTimeout
+)
+
 // NewBuildTestSetupKey creates a buildTestSetupKey for testing.
 func NewBuildTestSetupKey(taskID string) any {
 	return buildTestSetupKey{taskID: taskID}
 }
-
-const (
-	ExportedBuildEdge = BuildEdge
-	ExportedRunEdge   = RunEdge
-	MaxOutputSize     = maxOutputSize
-)
 
 // TempDir exports the tempDir method for testing.
 func (m *BuildTestManager) TempDir(changeID string) string {
@@ -109,4 +117,37 @@ func (m *BuildTestManager) RunCleanupForTest(task *state.Task) error {
 	default:
 		return fmt.Errorf("unknown task kind: %s", task.Kind())
 	}
+}
+
+// RegisterExecutionForTest creates and registers a buildTestExecution for
+// testing, returning the execution object.
+func (m *BuildTestManager) RegisterExecutionForTest(taskID, taskKind string, wsIDs []string) *buildTestExecution {
+	return m.registerExecution(taskID, taskKind, wsIDs)
+}
+
+// UnregisterExecutionForTest removes the execution for the given task ID.
+func (m *BuildTestManager) UnregisterExecutionForTest(taskID string) {
+	m.unregisterExecution(taskID)
+}
+
+// GetExecutionForTest returns the execution for the given task ID, or nil.
+func (m *BuildTestManager) GetExecutionForTest(taskID string) *buildTestExecution {
+	m.executionsCond.L.Lock()
+	defer m.executionsCond.L.Unlock()
+	return m.executions[taskID]
+}
+
+// WaitIOConnectedForTest waits for all I/O websockets to connect.
+func (e *buildTestExecution) WaitIOConnectedForTest(ctx context.Context, taskID string) error {
+	return e.waitIOConnected(ctx, taskID)
+}
+
+// GetWebsocketForTest returns the websocket connection for the given ID.
+func (e *buildTestExecution) GetWebsocketForTest(key string) *websocket.Conn {
+	return e.getWebsocket(key)
+}
+
+// IOConnectedForTest returns the ioConnected channel for testing.
+func (e *buildTestExecution) IOConnectedForTest() chan struct{} {
+	return e.ioConnected
 }

@@ -46,6 +46,9 @@ func v1GetTaskWebsocket(c *Command, req *http.Request, _ *UserState) Response {
 	case "exec":
 		commandMgr := c.d.overlord.CommandManager()
 		connect = commandMgr.Connect
+	case "build-test-build", "build-test-run":
+		buildTestMgr := c.d.overlord.BuildTestManager()
+		connect = buildTestMgr.Connect
 	default:
 		logger.Noticef("Websocket %s: %q tasks do not have websockets", task.ID(), task.Kind())
 		return BadRequest("%q tasks do not have websockets", task.Kind())

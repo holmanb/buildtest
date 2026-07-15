@@ -36,6 +36,7 @@ type cmdBuildTest struct {
 	client *client.Client
 
 	Timeout time.Duration `long:"timeout"`
+	Stream  bool          `long:"stream"`
 
 	Positional struct {
 		SourcePath string `positional-arg-name:"<source-path>" required:"1"`
@@ -54,6 +55,7 @@ func init() {
 		Description: cmdBuildTestDescription,
 		ArgsHelp: map[string]string{
 			"--timeout": "Timeout for the overall build and test operation",
+			"--stream":  "Stream build and test output in real-time",
 		},
 		New: func(opts *CmdOptions) flags.Commander {
 			return &cmdBuildTest{client: opts.Client}
@@ -71,22 +73,36 @@ func (cmd *cmdBuildTest) Execute(args []string) error {
 		Timeout:    cmd.Timeout,
 	}
 
+	if cmd.Stream {
+		opts.Stdout = Stdout
+		opts.Stderr = Stderr
+	}
+
 	result, err := cmd.client.BuildTest(opts)
 	if err != nil {
 		return err
 	}
 
-	// Print the results.
-	fmt.Fprintf(Stdout, "BUILD\n")
-	fmt.Fprintf(Stdout, "  Exit code: %d\n", result.Build.ExitCode)
-	printOutput("Stdout", result.Build.Stdout)
-	printOutput("Stderr", result.Build.Stderr)
+	if cmd.Stream {
+		// When streaming, output was already printed in real-time.
+		// Just print the exit codes.
+		fmt.Fprintf(Stdout, "BUILD exit code: %d\n", result.Build.ExitCode)
+		if result.Run != nil {
+			fmt.Fprintf(Stdout, "RUN exit code: %d\n", result.Run.ExitCode)
+		}
+	} else {
+		// Print the results.
+		fmt.Fprintf(Stdout, "BUILD\n")
+		fmt.Fprintf(Stdout, "  Exit code: %d\n", result.Build.ExitCode)
+		printOutput("Stdout", result.Build.Stdout)
+		printOutput("Stderr", result.Build.Stderr)
 
-	if result.Run != nil {
-		fmt.Fprintf(Stdout, "\nRUN\n")
-		fmt.Fprintf(Stdout, "  Exit code: %d\n", result.Run.ExitCode)
-		printOutput("Stdout", result.Run.Stdout)
-		printOutput("Stderr", result.Run.Stderr)
+		if result.Run != nil {
+			fmt.Fprintf(Stdout, "\nRUN\n")
+			fmt.Fprintf(Stdout, "  Exit code: %d\n", result.Run.ExitCode)
+			printOutput("Stdout", result.Run.Stdout)
+			printOutput("Stderr", result.Run.Stderr)
+		}
 	}
 
 	// Return exit code from the run step if present, otherwise from build.

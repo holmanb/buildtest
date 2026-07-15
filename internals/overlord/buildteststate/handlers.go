@@ -17,8 +17,10 @@ package buildteststate
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"sync"
 	"time"
 
 	"gopkg.in/tomb.v2"
@@ -26,6 +28,7 @@ import (
 	"github.com/canonical/pebble/internals/logger"
 	"github.com/canonical/pebble/internals/overlord/state"
 	"github.com/canonical/pebble/internals/reaper"
+	"github.com/canonical/pebble/internals/wsutil"
 )
 
 // doBuild handles the "build-test-build" task kind.
@@ -62,12 +65,17 @@ func (m *BuildTestManager) doBuild(task *state.Task, tomb *tomb.Tomb) error {
 		logger.Noticef("Cannot remove uploaded tarball %q: %v", setup.SourceTarball, err)
 	}
 
+	// Register execution for websocket streaming.
+	wsIDs := []string{WsBuildStdout, WsBuildStderr}
+	e := m.registerExecution(task.ID(), buildTaskKind, wsIDs)
+	defer m.unregisterExecution(task.ID())
+
 	// Run snapcraft in the temp directory.
 	var timeout time.Duration
 	if setup.Timeout > 0 {
 		timeout = setup.Timeout
 	}
-	exitCode, stdout, stderr, err := runCommand("snapcraft", tempDir, timeout, tomb)
+	exitCode, stdout, stderr, err := m.runCommandStreaming("snapcraft", tempDir, timeout, tomb, e, WsBuildStdout, WsBuildStderr)
 	if err != nil {
 		return fmt.Errorf("cannot run snapcraft: %w", err)
 	}
@@ -114,8 +122,13 @@ func (m *BuildTestManager) doRun(task *state.Task, tomb *tomb.Tomb) error {
 	}
 	st.Unlock()
 
+	// Register execution for websocket streaming.
+	wsIDs := []string{WsRunStdout, WsRunStderr}
+	e := m.registerExecution(task.ID(), runTaskKind, wsIDs)
+	defer m.unregisterExecution(task.ID())
+
 	// Run spread in the temp directory.
-	exitCode, stdout, stderr, err := runCommand("spread", tempDir, timeout, tomb)
+	exitCode, stdout, stderr, err := m.runCommandStreaming("spread", tempDir, timeout, tomb, e, WsRunStdout, WsRunStderr)
 	if err != nil {
 		return fmt.Errorf("cannot run spread: %w", err)
 	}
@@ -135,9 +148,11 @@ func (m *BuildTestManager) doRun(task *state.Task, tomb *tomb.Tomb) error {
 // fakeRunCommand is used for testing to mock out command execution.
 var fakeRunCommand func(name string, dir string, timeout time.Duration, tomb *tomb.Tomb) (exitCode int, stdout string, stderr string, err error)
 
-// runCommand runs a command in the given directory, capturing stdout and stderr.
-// It returns the exit code, stdout, stderr, and any error starting the command.
-func runCommand(name string, dir string, timeout time.Duration, tomb *tomb.Tomb) (exitCode int, stdout string, stderr string, err error) {
+// runCommandStreaming runs a command in the given directory, streaming stdout
+// and stderr to websockets if connected, and capturing output for api-data.
+// If no websocket connects within the connect timeout, it falls back to
+// buffered capture (the original non-streaming behavior).
+func (m *BuildTestManager) runCommandStreaming(name string, dir string, timeout time.Duration, tomb *tomb.Tomb, e *buildTestExecution, stdoutWsID, stderrWsID string) (exitCode int, stdout string, stderr string, err error) {
 	if fakeRunCommand != nil {
 		return fakeRunCommand(name, dir, timeout, tomb)
 	}
@@ -149,9 +164,112 @@ func runCommand(name string, dir string, timeout time.Duration, tomb *tomb.Tomb)
 		defer cancel()
 	}
 
+	// Wait for websocket connections (with timeout).
+	// If no connections arrive, fall back to buffered capture.
+	streaming := false
+	waitErr := e.waitIOConnected(ctx, name)
+	if waitErr == nil {
+		streaming = true
+	} else {
+		logger.Debugf("Build-test %s: no websocket connections, falling back to buffered capture: %v", name, waitErr)
+	}
+
+	if streaming {
+		return m.runCommandPiped(name, dir, ctx, e, stdoutWsID, stderrWsID)
+	}
+	return runCommandBuffered(name, dir, ctx)
+}
+
+// runCommandPiped runs a command with pipes, streaming output to websockets
+// and also capturing to limitWriter for api-data storage.
+func (m *BuildTestManager) runCommandPiped(name string, dir string, ctx context.Context, e *buildTestExecution, stdoutWsID, stderrWsID string) (exitCode int, stdout string, stderr string, err error) {
+	var beforeClosers []io.Closer
+	var afterClosers []io.Closer
+	var wgOutputSent sync.WaitGroup
+
+	var stdoutLimit, stderrLimit limitWriter
+
+	// Stdout: pipe -> tee(limitWriter + websocket)
+	stdoutReader, stdoutWriter, err := os.Pipe()
+	if err != nil {
+		return -1, "", "", fmt.Errorf("cannot create stdout pipe: %w", err)
+	}
+	beforeClosers = append(beforeClosers, stdoutWriter)
+
+	stdoutConn := e.getWebsocket(stdoutWsID)
+	wgOutputSent.Go(func() {
+		// Tee the stdout pipe output to both the limitWriter and the websocket.
+		teeReader := io.TeeReader(stdoutReader, &stdoutLimit)
+		<-wsutil.WebsocketSendStream(stdoutConn, teeReader, -1)
+		stdoutReader.Close()
+	})
+
+	// Stderr: pipe -> tee(limitWriter + websocket)
+	stderrReader, stderrWriter, err := os.Pipe()
+	if err != nil {
+		return -1, "", "", fmt.Errorf("cannot create stderr pipe: %w", err)
+	}
+	beforeClosers = append(beforeClosers, stderrWriter)
+
+	stderrConn := e.getWebsocket(stderrWsID)
+	wgOutputSent.Go(func() {
+		// Tee the stderr pipe output to both the limitWriter and the websocket.
+		teeReader := io.TeeReader(stderrReader, &stderrLimit)
+		<-wsutil.WebsocketSendStream(stderrConn, teeReader, -1)
+		stderrReader.Close()
+	})
+
 	cmd := exec.CommandContext(ctx, name)
 	cmd.Dir = dir
-	cmd.WaitDelay = time.Second // same as cmdstate
+	cmd.WaitDelay = time.Second
+	cmd.Stdout = stdoutWriter
+	cmd.Stderr = stderrWriter
+
+	err = reaper.StartCommand(cmd)
+	if err != nil {
+		// Close pipes on error.
+		for _, closer := range beforeClosers {
+			_ = closer.Close()
+		}
+		for _, closer := range afterClosers {
+			_ = closer.Close()
+		}
+		return -1, "", "", fmt.Errorf("cannot start %s: %w", name, err)
+	}
+
+	exitCode, waitErr := reaper.WaitCommand(cmd)
+	if waitErr != nil {
+		logger.Noticef("%s wait error: %v", name, waitErr)
+	}
+
+	// Close the write end of the pipes so the streaming goroutines get EOF.
+	for _, closer := range beforeClosers {
+		_ = closer.Close()
+	}
+
+	// Wait for all output to be sent over websockets.
+	wgOutputSent.Wait()
+
+	for _, closer := range afterClosers {
+		_ = closer.Close()
+	}
+
+	if ctx.Err() == context.DeadlineExceeded {
+		return exitCode, stdoutLimit.String(), stderrLimit.String(), fmt.Errorf("%s timed out after %v", name, ctx.Err())
+	}
+	if ctx.Err() == context.Canceled {
+		return exitCode, stdoutLimit.String(), stderrLimit.String(), fmt.Errorf("%s interrupted", name)
+	}
+
+	return exitCode, stdoutLimit.String(), stderrLimit.String(), nil
+}
+
+// runCommandBuffered runs a command with buffered capture (no streaming).
+// This is the fallback when no websocket connections are available.
+func runCommandBuffered(name string, dir string, ctx context.Context) (exitCode int, stdout string, stderr string, err error) {
+	cmd := exec.CommandContext(ctx, name)
+	cmd.Dir = dir
+	cmd.WaitDelay = time.Second
 
 	var stdoutBuf, stderrBuf limitWriter
 	cmd.Stdout = &stdoutBuf
@@ -168,7 +286,7 @@ func runCommand(name string, dir string, timeout time.Duration, tomb *tomb.Tomb)
 	}
 
 	if ctx.Err() == context.DeadlineExceeded {
-		return exitCode, stdoutBuf.String(), stderrBuf.String(), fmt.Errorf("%s timed out after %v", name, timeout)
+		return exitCode, stdoutBuf.String(), stderrBuf.String(), fmt.Errorf("%s timed out after %v", name, ctx.Err())
 	}
 	if ctx.Err() == context.Canceled {
 		return exitCode, stdoutBuf.String(), stderrBuf.String(), fmt.Errorf("%s interrupted", name)
