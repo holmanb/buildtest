@@ -69,7 +69,18 @@ var (
 	SetupTLSOptions = setupTLSOptions
 
 	WithDefaultRunOptions = withDefaultRunOptions
+
+	NewCmdRun = newCmdRun
 )
+
+// CmdRun is a test-only export of cmdRun.
+type CmdRun = cmdRun
+
+// CmdRunHTTPAddress calls the unexported httpAddress method on CmdRun.
+func CmdRunHTTPAddress(cmd *CmdRun) string { return cmd.httpAddress() }
+
+// CmdRunHTTPSAddress calls the unexported httpsAddress method on CmdRun.
+func CmdRunHTTPSAddress(cmd *CmdRun) string { return cmd.httpsAddress() }
 
 func FakeIsStdoutTTY(t bool) (restore func()) {
 	oldIsStdoutTTY := isStdoutTTY

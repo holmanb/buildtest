@@ -65,8 +65,8 @@ type sharedRunEnterOpts struct {
 var sharedRunEnterArgsHelp = map[string]string{
 	"--create-dirs": "Create {{.DisplayName}} directory on startup if it doesn't exist",
 	"--hold":        "Do not start default services automatically",
-	"--http":        `Start HTTP API listening on this address in "<address>:port" format (for example, ":4000", "192.0.2.0:4000", "[2001:db8::1]:4000")`,
-	"--https":       `Start HTTPS API listening on this address in "<address>:port" format (for example, ":8443", "192.0.2.0:8443", "[2001:db8::1]:8443")`,
+	"--http":        `Start HTTP API listening on this address in "<address>:port" format (for example, ":4000", "192.0.2.0:4000", "[2001:db8::1]:4000") (also PEBBLE_HTTP)`,
+	"--https":       `Start HTTPS API listening on this address in "<address>:port" format (for example, ":8443", "192.0.2.0:8443", "[2001:db8::1]:8443") (also PEBBLE_HTTPS)`,
 	"--verbose":     "Log all output from services to stdout (also PEBBLE_VERBOSE=1)",
 	"--args":        "Provide additional arguments to a service",
 	"--identities":  "Seed identities from file (like update-identities --replace)",
@@ -97,6 +97,16 @@ func init() {
 	})
 }
 
+// newCmdRun creates a cmdRun with the given options, for testing.
+func newCmdRun(http, https string) *cmdRun {
+	return &cmdRun{
+		sharedRunEnterOpts: sharedRunEnterOpts{
+			HTTP:  http,
+			HTTPS: https,
+		},
+	}
+}
+
 func (rcmd *cmdRun) Execute(args []string) error {
 	if len(args) > 0 {
 		return ErrExtraArgs
@@ -105,6 +115,24 @@ func (rcmd *cmdRun) Execute(args []string) error {
 	rcmd.run(nil)
 
 	return nil
+}
+
+// httpAddress returns the HTTP address for the daemon, using the --http
+// flag if set, otherwise falling back to the PEBBLE_HTTP environment variable.
+func (rcmd *cmdRun) httpAddress() string {
+	if rcmd.HTTP != "" {
+		return rcmd.HTTP
+	}
+	return os.Getenv("PEBBLE_HTTP")
+}
+
+// httpsAddress returns the HTTPS address for the daemon, using the --https
+// flag if set, otherwise falling back to the PEBBLE_HTTPS environment variable.
+func (rcmd *cmdRun) httpsAddress() string {
+	if rcmd.HTTPS != "" {
+		return rcmd.HTTPS
+	}
+	return os.Getenv("PEBBLE_HTTPS")
 }
 
 func (rcmd *cmdRun) run(ready chan<- func()) {
@@ -217,8 +245,8 @@ func runDaemon(rcmd *cmdRun, ch chan os.Signal, ready chan<- func()) error {
 	dopts := daemon.Options{
 		Dir:          rcmd.pebbleDir,
 		SocketPath:   rcmd.socketPath,
-		HTTPAddress:  rcmd.HTTP,
-		HTTPSAddress: rcmd.HTTPS,
+		HTTPAddress:  rcmd.httpAddress(),
+		HTTPSAddress: rcmd.httpsAddress(),
 	}
 	if os.Getenv("PEBBLE_VERBOSE") == "1" || rcmd.Verbose {
 		dopts.ServiceOutput = os.Stdout
@@ -227,7 +255,7 @@ func runDaemon(rcmd *cmdRun, ch chan os.Signal, ready chan<- func()) error {
 		dopts.Persist = overlord.PersistNever
 	}
 
-	tlsOpts, err := setupTLSOptions(rcmd.pebbleDir, rcmd.HTTPS, dopts.Persist)
+	tlsOpts, err := setupTLSOptions(rcmd.pebbleDir, rcmd.httpsAddress(), dopts.Persist)
 	if err != nil {
 		return err
 	}

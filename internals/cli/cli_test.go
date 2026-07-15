@@ -13,6 +13,7 @@ import (
 	"golang.org/x/term"
 	. "gopkg.in/check.v1"
 
+	"github.com/canonical/pebble/client"
 	"github.com/canonical/pebble/cmd"
 	"github.com/canonical/pebble/internals/cli"
 	"github.com/canonical/pebble/internals/overlord/pairingstate"
@@ -155,20 +156,39 @@ func (s *PebbleSuite) TestErrorResult(c *C) {
 func (s *PebbleSuite) TestRunOptionApplyDefaults(c *C) {
 	os.Setenv("PEBBLE", "")
 	os.Setenv("PEBBLE_SOCKET", "")
+	os.Setenv("PEBBLE_BASEURL", "")
 	r := cli.WithDefaultRunOptions(nil)
 	c.Assert(r.PebbleDir, Equals, "/var/lib/pebble/default")
 	c.Assert(r.ClientConfig.Socket, Equals, "/var/lib/pebble/default/.pebble.socket")
+	c.Assert(r.ClientConfig.BaseURL, Equals, "")
 
 	os.Setenv("PEBBLE", "/foo")
 	r = cli.WithDefaultRunOptions(nil)
 	c.Assert(r.PebbleDir, Equals, "/foo")
 	c.Assert(r.ClientConfig.Socket, Equals, "/foo/.pebble.socket")
+	c.Assert(r.ClientConfig.BaseURL, Equals, "")
 
 	os.Setenv("PEBBLE", "/bar")
 	os.Setenv("PEBBLE_SOCKET", "/path/to/socket")
 	r = cli.WithDefaultRunOptions(nil)
 	c.Assert(r.PebbleDir, Equals, "/bar")
 	c.Assert(r.ClientConfig.Socket, Equals, "/path/to/socket")
+	c.Assert(r.ClientConfig.BaseURL, Equals, "")
+
+	os.Setenv("PEBBLE_BASEURL", "http://localhost:4000")
+	r = cli.WithDefaultRunOptions(nil)
+	c.Assert(r.ClientConfig.BaseURL, Equals, "http://localhost:4000")
+
+	os.Setenv("PEBBLE_BASEURL", "https://192.0.2.1:8443")
+	r = cli.WithDefaultRunOptions(nil)
+	c.Assert(r.ClientConfig.BaseURL, Equals, "https://192.0.2.1:8443")
+
+	// Explicit ClientConfig.BaseURL should override env var.
+	os.Setenv("PEBBLE_BASEURL", "http://localhost:4000")
+	r = cli.WithDefaultRunOptions(&cli.RunOptions{
+		ClientConfig: &client.Config{BaseURL: "https://other:8443"},
+	})
+	c.Assert(r.ClientConfig.BaseURL, Equals, "https://other:8443")
 }
 
 func (s *BasePebbleSuite) readCLIState(c *C) map[string]any {

@@ -178,3 +178,39 @@ func (s *PebbleSuite) TestSetupTLSOptionsHTTPSWithPersistDefault(c *C) {
 	c.Assert(opts2.Signer, NotNil)
 	c.Check(opts2.Signer.Fingerprint(), Equals, opts.Signer.Fingerprint())
 }
+
+func (s *PebbleSuite) TestHTTPAddressEnvVar(c *C) {
+	os.Setenv("PEBBLE_HTTP", "")
+
+	// No flag, no env var: empty.
+	cmd := cli.NewCmdRun("", "")
+	c.Check(cli.CmdRunHTTPAddress(cmd), Equals, "")
+
+	// Env var only.
+	os.Setenv("PEBBLE_HTTP", ":4000")
+	c.Check(cli.CmdRunHTTPAddress(cmd), Equals, ":4000")
+
+	// Flag overrides env var.
+	cmd = cli.NewCmdRun(":5000", "")
+	c.Check(cli.CmdRunHTTPAddress(cmd), Equals, ":5000")
+
+	os.Setenv("PEBBLE_HTTP", "")
+}
+
+func (s *PebbleSuite) TestHTTPSAddressEnvVar(c *C) {
+	os.Setenv("PEBBLE_HTTPS", "")
+
+	// No flag, no env var: empty.
+	cmd := cli.NewCmdRun("", "")
+	c.Check(cli.CmdRunHTTPSAddress(cmd), Equals, "")
+
+	// Env var only.
+	os.Setenv("PEBBLE_HTTPS", ":8443")
+	c.Check(cli.CmdRunHTTPSAddress(cmd), Equals, ":8443")
+
+	// Flag overrides env var.
+	cmd = cli.NewCmdRun("", ":9443")
+	c.Check(cli.CmdRunHTTPSAddress(cmd), Equals, ":9443")
+
+	os.Setenv("PEBBLE_HTTPS", "")
+}
