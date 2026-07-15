@@ -30,6 +30,7 @@ import (
 
 	"github.com/canonical/pebble/cmd"
 	"github.com/canonical/pebble/internals/osutil"
+	"github.com/canonical/pebble/internals/overlord/buildteststate"
 	"github.com/canonical/pebble/internals/overlord/checkstate"
 	"github.com/canonical/pebble/internals/overlord/cmdstate"
 	"github.com/canonical/pebble/internals/overlord/identities"
@@ -125,6 +126,7 @@ type Overlord struct {
 	planMgr       *planstate.PlanManager
 	serviceMgr    *servstate.ServiceManager
 	commandMgr    *cmdstate.CommandManager
+	buildTestMgr  *buildteststate.BuildTestManager
 	checkMgr      *checkstate.CheckManager
 	logMgr        *logstate.LogManager
 	tlsMgr        *tlsstate.TLSManager
@@ -247,6 +249,9 @@ func New(opts *Options) (*Overlord, error) {
 
 	o.commandMgr = cmdstate.NewManager(o.runner)
 	o.stateEng.AddManager(o.commandMgr)
+
+	o.buildTestMgr = buildteststate.NewManager(o.pebbleDir, o.runner)
+	o.stateEng.AddManager(o.buildTestMgr)
 
 	o.checkMgr = checkstate.NewManager(s, o.runner, o.planMgr)
 	o.stateEng.AddManager(o.checkMgr)
@@ -647,6 +652,12 @@ func (o *Overlord) ServiceManager() *servstate.ServiceManager {
 // commands under the overlord.
 func (o *Overlord) CommandManager() *cmdstate.CommandManager {
 	return o.commandMgr
+}
+
+// BuildTestManager returns the build-test manager responsible for building
+// source and running tests under the overlord.
+func (o *Overlord) BuildTestManager() *buildteststate.BuildTestManager {
+	return o.buildTestMgr
 }
 
 // CheckManager returns the check manager responsible for running health

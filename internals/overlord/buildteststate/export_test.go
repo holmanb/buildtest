@@ -1,0 +1,112 @@
+// Copyright (c) 2026 Canonical Ltd
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License version 3 as
+// published by the Free Software Foundation.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+package buildteststate
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
+	"gopkg.in/tomb.v2"
+
+	"github.com/canonical/pebble/internals/overlord/state"
+)
+
+// Export for testing.
+var (
+	BuildTaskKind = buildTaskKind
+	RunTaskKind   = runTaskKind
+)
+
+// NewBuildTestSetupKey creates a buildTestSetupKey for testing.
+func NewBuildTestSetupKey(taskID string) any {
+	return buildTestSetupKey{taskID: taskID}
+}
+
+const (
+	ExportedBuildEdge = BuildEdge
+	ExportedRunEdge   = RunEdge
+	MaxOutputSize     = maxOutputSize
+)
+
+// TempDir exports the tempDir method for testing.
+func (m *BuildTestManager) TempDir(changeID string) string {
+	return m.tempDir(changeID)
+}
+
+// FakeRunCommand sets a mock for the runCommand function and returns a
+// restore function to reset it. This allows tests to mock command
+// execution without running real snapcraft/spread binaries.
+func FakeRunCommand(f func(name string, dir string, timeout time.Duration, tomb *tomb.Tomb) (exitCode int, stdout string, stderr string, err error)) (restore func()) {
+	old := fakeRunCommand
+	fakeRunCommand = f
+	return func() { fakeRunCommand = old }
+}
+
+// ExtractTarball exports the extractTarball function for testing.
+var ExtractTarball = extractTarball
+
+// NewLimitWriter creates a new limitWriter for testing.
+func NewLimitWriter() *limitWriter {
+	return &limitWriter{}
+}
+
+// Bytes returns the buffer contents as a byte slice.
+func (w *limitWriter) Bytes() []byte {
+	return w.buf
+}
+
+// RunHandlerForTest runs the appropriate handler for the given task.
+// This is for testing only — it looks up the handler registered for the
+// task's kind and invokes it with a fresh tomb.
+func (m *BuildTestManager) RunHandlerForTest(task *state.Task) error {
+	t := &tomb.Tomb{}
+	switch task.Kind() {
+	case buildTaskKind:
+		return m.doBuild(task, t)
+	case runTaskKind:
+		return m.doRun(task, t)
+	default:
+		return fmt.Errorf("unknown task kind: %s", task.Kind())
+	}
+}
+
+// RunCleanupForTest runs the cleanup handler for the given task.
+func (m *BuildTestManager) RunCleanupForTest(task *state.Task) error {
+	switch task.Kind() {
+	case buildTaskKind:
+		// Build cleanup: clear cache entry.
+		st := task.State()
+		st.Lock()
+		defer st.Unlock()
+		st.Cache(buildTestSetupKey{task.ID()}, nil)
+		return nil
+	case runTaskKind:
+		// Run cleanup: remove temp directory.
+		st := task.State()
+		st.Lock()
+		change := task.Change()
+		st.Unlock()
+		tempDir := filepath.Join(m.pebbleDir, "build-test", change.ID())
+		err := os.RemoveAll(tempDir)
+		if err != nil {
+			return err
+		}
+		return nil
+	default:
+		return fmt.Errorf("unknown task kind: %s", task.Kind())
+	}
+}

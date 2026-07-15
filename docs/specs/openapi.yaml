@@ -394,6 +394,53 @@ paths:
                     "error": "check timed out after 1s"
                   }
                 }
+  /v1/build-test:
+    post:
+      summary: Build source and run tests
+      tags:
+        - build-test
+      description: |
+        Upload source code as a tarball, build it with snapcraft, and run spread tests.
+        The source code must be provided as a gzipped tar archive in a multipart form upload.
+        The operation is asynchronous: it returns a change ID that can be used to track progress.
+        Results (stdout, stderr, exit code) are available in the change's task data after completion.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                request:
+                  type: object
+                  properties:
+                    timeout:
+                      type: string
+                      description: Optional timeout for the overall operation (e.g., "60s", "1h").
+                source:
+                  type: string
+                  format: binary
+                  description: Gzipped tar archive of the source code.
+              required:
+                - source
+      responses:
+        "202":
+          description: Build-test operation initiated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostBuildTestResponse"
+              example:
+                {
+                  "type": "async",
+                  "status-code": 202,
+                  "status": "Accepted",
+                  "change": "4",
+                  "result": {
+                    "build-task-id": "7",
+                    "run-task-id": "8"
+                  }
+                }
   /v1/exec:
     post:
       summary: Execute a command
@@ -1478,6 +1525,32 @@ components:
       required:
         - action
         - paths
+    PostBuildTestResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseAsyncResponse"
+        - type: object
+          properties:
+            result:
+              type: object
+              properties:
+                build-task-id:
+                  type: string
+                  description: The ID of the build task.
+                run-task-id:
+                  type: string
+                  description: The ID of the run task.
+    BuildTestTaskResult:
+      type: object
+      properties:
+        stdout:
+          type: string
+          description: The standard output from the command.
+        stderr:
+          type: string
+          description: The standard error from the command.
+        exit-code:
+          type: integer
+          description: The exit code from the command.
     PostExecRequest:
       type: object
       properties:

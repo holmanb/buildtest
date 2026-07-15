@@ -1,0 +1,89 @@
+# Pebble user service
+#
+# This systemd user unit runs the Pebble service manager under the current user.
+# Install to ~/.config/systemd/user/ or copy to /etc/systemd/user/ for all users.
+#
+# Usage:
+#   systemctl --user enable --now pebble
+#   systemctl --user status pebble
+#   systemctl --user stop pebble
+#
+# Configuration:
+#   Override the Pebble directory by setting PEBBLE in an override file:
+#     systemctl --user edit pebble
+#     [Service]
+#     Environment=PEBBLE=/path/to/pebble-dir
+#
+#   Enable HTTP/HTTPS API access:
+#     [Service]
+#     Environment=PEBBLE_HTTP=:4000
+#     ExecStart=pebble run --http ${PEBBLE_HTTP}
+
+[Unit]
+Description=Pebble service manager
+Documentation=https://github.com/canonical/pebble
+
+[Service]
+Type=notify
+NotifyAccess=all
+
+# Pebble directory defaults to ~/.local/share/pebble/default for user services.
+# Override with PEBBLE= in an environment override file.
+Environment=PEBBLE=%h/.local/share/pebble/default
+
+# Create the Pebble directory on first start.
+ExecStart=/usr/bin/pebble run --create-dirs
+
+# Restart on failure, but not on clean exit or the special restart exit codes
+# that Pebble uses to signal socket activation or service/check failure restarts.
+Restart=on-failure
+
+# Pebble uses these exit codes to signal systemd that it should restart
+# the daemon for socket activation (42), service failure (10), or check
+# failure (11). These are treated as successful exits for restart logic.
+SuccessExitStatus=42 10 11
+
+# Watchdog: Pebble sends WATCHDOG=1 when WATCHDOG_USEC is set.
+WatchdogSec=30s
+
+# Sandboxing — restrict the service to least-privilege operation.
+# User services cannot use User=/Group= (they already run as the user).
+
+# Protect the home directory: allow read-only access to most of it, but
+# write access only to the Pebble directory and XDG runtime/data dirs.
+ProtectHome=read-only
+
+# Prevent writing to /usr and /boot.
+ProtectSystem=strict
+
+# Allow the service to write to its state directory and log locations.
+ReadWritePaths=%h/.local/share/pebble %t %h/.local/state
+
+# Use a private /tmp.
+PrivateTmp=true
+
+# Restrict network access: Pebble needs a Unix socket (always allowed)
+# and optionally TCP for HTTP/HTTPS API. If you enable HTTP/HTTPS,
+# comment out RestrictAddressFamilies=AF_UNIX.
+# RestrictAddressFamilies=AF_UNIX
+
+# No new privileges via setuid/setgid.
+NoNewPrivileges=true
+
+# Restrict capabilities to only what Pebble needs (none beyond default).
+CapabilityBoundingSet=
+
+# Remove access to unnecessary devices.
+PrivateDevices=true
+
+# Don't allow mounting new filesystems.
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+
+# Lock the process to its own namespace where possible.
+ProtectClock=true
+ProtectHostname=true
+
+[Install]
+WantedBy=default.target

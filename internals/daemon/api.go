@@ -120,6 +120,11 @@ var API = []*Command{{
 	WriteAccess: PairingAccess{},
 	POST:        v1PostPairing,
 }, {
+	Path:        "/v1/build-test",
+	ReadAccess:  UserAccess{},
+	WriteAccess: AdminAccess{},
+	POST:        v1PostBuildTest,
+}, {
 	Path:       "/v1/metrics",
 	ReadAccess: MetricsAccess{},
 	GET:        v1GetMetrics,
