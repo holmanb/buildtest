@@ -187,21 +187,23 @@ func (client *Client) BuildTest(opts *BuildTestOptions) (*BuildTestResult, error
 // are provided. It connects to websockets for each task and streams output
 // in real-time, then waits for the change to complete.
 func (client *Client) buildTestStreaming(changeID string, opts *BuildTestOptions) (*BuildTestResult, error) {
-	// Wait for the change to be ready enough to get task IDs.
-	waitOpts := &WaitChangeOptions{}
-	if opts.Timeout != 0 {
-		waitOpts.Timeout = opts.Timeout + 30*time.Second
-	}
-	change, err := client.WaitChange(changeID, waitOpts)
-	if err != nil {
-		return nil, fmt.Errorf("cannot wait for build-test to complete: %w", err)
-	}
-	if change.Err != "" {
-		return nil, errors.New(change.Err)
+	// Poll the change until tasks are available, so we can get task IDs
+	// and connect to websockets before the tasks complete.
+	var change *Change
+	for {
+		var err error
+		change, err = client.Change(changeID)
+		if err != nil {
+			return nil, fmt.Errorf("cannot get change %q: %w", changeID, err)
+		}
+		if len(change.Tasks) > 0 {
+			break
+		}
+		// Brief pause before polling again.
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	// Connect to websockets for each task and stream output.
-	result := &BuildTestResult{}
 	var writesDone []chan bool
 
 	for _, task := range change.Tasks {
@@ -214,9 +216,6 @@ func (client *Client) buildTestStreaming(changeID string, opts *BuildTestOptions
 			if buildStderrDone != nil {
 				writesDone = append(writesDone, buildStderrDone)
 			}
-			result.Build = BuildResult{
-				ExitCode: taskGetInt(task, "exit-code"),
-			}
 		case "build-test-run":
 			runStdoutDone, runStderrDone := client.streamTaskOutput(task.ID, "run", opts.Stdout, opts.Stderr)
 			if runStdoutDone != nil {
@@ -225,15 +224,40 @@ func (client *Client) buildTestStreaming(changeID string, opts *BuildTestOptions
 			if runStderrDone != nil {
 				writesDone = append(writesDone, runStderrDone)
 			}
-			result.Run = &RunResult{
-				ExitCode: taskGetInt(task, "exit-code"),
-			}
 		}
+	}
+
+	// Wait for the change to complete.
+	waitOpts := &WaitChangeOptions{}
+	if opts.Timeout != 0 {
+		waitOpts.Timeout = opts.Timeout + 30*time.Second
+	}
+	change, err := client.WaitChange(changeID, waitOpts)
+	if err != nil {
+		return nil, fmt.Errorf("cannot wait for build-test to complete: %w", err)
+	}
+	if change.Err != "" {
+		return nil, errors.New(change.Err)
 	}
 
 	// Wait for all streaming output to be flushed.
 	for _, done := range writesDone {
 		<-done
+	}
+
+	// Extract results from the completed change.
+	result := &BuildTestResult{}
+	for _, task := range change.Tasks {
+		switch task.Kind {
+		case "build-test-build":
+			result.Build = BuildResult{
+				ExitCode: taskGetInt(task, "exit-code"),
+			}
+		case "build-test-run":
+			result.Run = &RunResult{
+				ExitCode: taskGetInt(task, "exit-code"),
+			}
+		}
 	}
 
 	return result, nil
