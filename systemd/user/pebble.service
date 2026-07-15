@@ -51,16 +51,14 @@ WatchdogSec=30s
 #
 # NOTE: Many sandboxing directives (ProtectSystem=strict, ProtectHome=,
 # PrivateTmp, PrivateDevices, ProtectKernel*, ProtectClock,
-# ProtectHostname, ProtectControlGroups) require CAP_SYS_ADMIN and
-# cannot be used in user services. They will cause a NAMESPACE error
-# (exit code 226) at startup. Only directives that work unprivileged
-# are listed below.
+# ProtectHostname, ProtectControlGroups, CapabilityBoundingSet)
+# require CAP_SYS_ADMIN or CAP_SETPCAP and cannot be used in user
+# services. They will cause a NAMESPACE (226) or CAPABILITIES (218)
+# error at startup. Only directives that work unprivileged are listed
+# below.
 
 # No new privileges via setuid/setgid.
 NoNewPrivileges=true
-
-# Restrict capabilities to only what Pebble needs (none beyond default).
-CapabilityBoundingSet=
 
 [Install]
 WantedBy=default.target
