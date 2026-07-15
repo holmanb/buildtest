@@ -186,6 +186,11 @@ func (client *Client) BuildTest(opts *BuildTestOptions) (*BuildTestResult, error
 // buildTestStreaming handles the streaming case where Stdout/Stderr writers
 // are provided. It connects to websockets for each task and streams output
 // in real-time, then waits for the change to complete.
+//
+// Because the build and run tasks are sequential (run waits for build),
+// we must connect to the run task's websockets only after the build task
+// has completed, since the run task's execution is not registered until
+// it starts running.
 func (client *Client) buildTestStreaming(changeID string, opts *BuildTestOptions) (*BuildTestResult, error) {
 	// Poll the change until tasks are available, so we can get task IDs
 	// and connect to websockets before the tasks complete.
@@ -203,21 +208,78 @@ func (client *Client) buildTestStreaming(changeID string, opts *BuildTestOptions
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	// Connect to websockets for each task and stream output.
-	var writesDone []chan bool
-
+	// Find the build and run task IDs.
+	var buildTaskID, runTaskID string
 	for _, task := range change.Tasks {
 		switch task.Kind {
 		case "build-test-build":
-			buildStdoutDone, buildStderrDone := client.streamTaskOutput(task.ID, "build", opts.Stdout, opts.Stderr)
-			if buildStdoutDone != nil {
-				writesDone = append(writesDone, buildStdoutDone)
-			}
-			if buildStderrDone != nil {
-				writesDone = append(writesDone, buildStderrDone)
-			}
+			buildTaskID = task.ID
 		case "build-test-run":
-			runStdoutDone, runStderrDone := client.streamTaskOutput(task.ID, "run", opts.Stdout, opts.Stderr)
+			runTaskID = task.ID
+		}
+	}
+
+	// Connect to the build task's websockets immediately, since the build
+	// task starts first and its execution is registered right away.
+	var writesDone []chan bool
+	if buildTaskID != "" {
+		buildStdoutDone, buildStderrDone := client.streamTaskOutput(buildTaskID, "build", opts.Stdout, opts.Stderr)
+		if buildStdoutDone != nil {
+			writesDone = append(writesDone, buildStdoutDone)
+		}
+		if buildStderrDone != nil {
+			writesDone = append(writesDone, buildStderrDone)
+		}
+	}
+
+	// Wait for the build task to complete before connecting to the run
+	// task's websockets, since the run task's execution is not registered
+	// until the build task finishes and the run task starts.
+	waitOpts := &WaitChangeOptions{}
+	if opts.Timeout != 0 {
+		waitOpts.Timeout = opts.Timeout + 30*time.Second
+	}
+
+	// Poll the change until the build task is done (or the whole change is
+	// done, which may happen if the build fails and there's no run task).
+	for {
+		change, err := client.Change(changeID)
+		if err != nil {
+			return nil, fmt.Errorf("cannot get change %q: %w", changeID, err)
+		}
+		if change.Err != "" {
+			return nil, errors.New(change.Err)
+		}
+
+		// Check if the build task is done.
+		buildDone := false
+		for _, task := range change.Tasks {
+			if task.Kind == "build-test-build" && task.Status == "Done" {
+				buildDone = true
+			}
+		}
+
+		// If the build is done, or the whole change is ready, break out.
+		if buildDone || change.Ready {
+			break
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Connect to the run task's websockets now that the build is done
+	// (the run task's execution should be registered).
+	if runTaskID != "" && change.Err == "" {
+		// Check if the build succeeded (non-zero exit code means the run
+		// task won't execute).
+		buildFailed := false
+		for _, task := range change.Tasks {
+			if task.Kind == "build-test-build" && taskGetInt(task, "exit-code") != 0 {
+				buildFailed = true
+			}
+		}
+		if !buildFailed {
+			runStdoutDone, runStderrDone := client.streamTaskOutput(runTaskID, "run", opts.Stdout, opts.Stderr)
 			if runStdoutDone != nil {
 				writesDone = append(writesDone, runStdoutDone)
 			}
@@ -228,10 +290,6 @@ func (client *Client) buildTestStreaming(changeID string, opts *BuildTestOptions
 	}
 
 	// Wait for the change to complete.
-	waitOpts := &WaitChangeOptions{}
-	if opts.Timeout != 0 {
-		waitOpts.Timeout = opts.Timeout + 30*time.Second
-	}
 	change, err := client.WaitChange(changeID, waitOpts)
 	if err != nil {
 		return nil, fmt.Errorf("cannot wait for build-test to complete: %w", err)

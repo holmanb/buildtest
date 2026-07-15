@@ -214,6 +214,10 @@ var HelpCategories = []HelpCategory{{
 	Label:       "Identities", // special-cased in printShortHelp
 	Description: "manage user identities",
 	Commands:    []string{"identities", "identity", "add-identities", "update-identities", "remove-identities"},
+}, {
+	Label:       "Build",
+	Description: "build source and run tests",
+	Commands:    []string{"build-test"},
 }}
 
 var (
