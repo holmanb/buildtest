@@ -51,7 +51,7 @@ func (cs *clientSuite) TestBuildTestRequestFormat(c *C) {
 					"progress": {"done": 1, "total": 1},
 					"spawn-time": "2026-01-01T00:00:00Z",
 					"ready-time": "2026-01-01T00:00:30Z",
-					"data": {"api-data": {"stdout": "build output", "stderr": "", "exit-code": 0}}
+					"data": {"stdout": "build output", "stderr": "", "exit-code": 0}
 				},
 				{
 					"id": "2",
@@ -61,7 +61,7 @@ func (cs *clientSuite) TestBuildTestRequestFormat(c *C) {
 					"progress": {"done": 1, "total": 1},
 					"spawn-time": "2026-01-01T00:00:30Z",
 					"ready-time": "2026-01-01T00:01:00Z",
-					"data": {"api-data": {"stdout": "test output", "stderr": "test stderr", "exit-code": 0}}
+					"data": {"stdout": "test output", "stderr": "test stderr", "exit-code": 0}
 				}
 			]
 		}}`,
@@ -118,7 +118,7 @@ func (cs *clientSuite) TestBuildTestWithTimeout(c *C) {
 					"progress": {"done": 1, "total": 1},
 					"spawn-time": "2026-01-01T00:00:00Z",
 					"ready-time": "2026-01-01T00:00:30Z",
-					"data": {"api-data": {"stdout": "", "stderr": "", "exit-code": 0}}
+					"data": {"stdout": "", "stderr": "", "exit-code": 0}
 				},
 				{
 					"id": "2",
@@ -128,7 +128,7 @@ func (cs *clientSuite) TestBuildTestWithTimeout(c *C) {
 					"progress": {"done": 1, "total": 1},
 					"spawn-time": "2026-01-01T00:00:30Z",
 					"ready-time": "2026-01-01T00:01:00Z",
-					"data": {"api-data": {"stdout": "", "stderr": "", "exit-code": 0}}
+					"data": {"stdout": "", "stderr": "", "exit-code": 0}
 				}
 			]
 		}}`,
@@ -171,7 +171,7 @@ func (cs *clientSuite) TestBuildTestBuildFailure(c *C) {
 					"progress": {"done": 1, "total": 1},
 					"spawn-time": "2026-01-01T00:00:00Z",
 					"ready-time": "2026-01-01T00:00:30Z",
-					"data": {"api-data": {"stdout": "building...", "stderr": "error: build failed", "exit-code": 1}}
+					"data": {"stdout": "building...", "stderr": "error: build failed", "exit-code": 1}
 				}
 			]
 		}}`,
