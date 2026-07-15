@@ -48,42 +48,19 @@ WatchdogSec=30s
 
 # Sandboxing — restrict the service to least-privilege operation.
 # User services cannot use User=/Group= (they already run as the user).
-
-# Protect the home directory: allow read-only access to most of it, but
-# write access only to the Pebble directory and XDG runtime/data dirs.
-ProtectHome=read-only
-
-# Prevent writing to /usr and /boot.
-ProtectSystem=strict
-
-# Allow the service to write to its state directory and log locations.
-ReadWritePaths=%h/.local/share/pebble %t %h/.local/state
-
-# Use a private /tmp.
-PrivateTmp=true
-
-# Restrict network access: Pebble needs a Unix socket (always allowed)
-# and optionally TCP for HTTP/HTTPS API. If you enable HTTP/HTTPS,
-# comment out RestrictAddressFamilies=AF_UNIX.
-# RestrictAddressFamilies=AF_UNIX
+#
+# NOTE: Many sandboxing directives (ProtectSystem=strict, ProtectHome=,
+# PrivateTmp, PrivateDevices, ProtectKernel*, ProtectClock,
+# ProtectHostname, ProtectControlGroups) require CAP_SYS_ADMIN and
+# cannot be used in user services. They will cause a NAMESPACE error
+# (exit code 226) at startup. Only directives that work unprivileged
+# are listed below.
 
 # No new privileges via setuid/setgid.
 NoNewPrivileges=true
 
 # Restrict capabilities to only what Pebble needs (none beyond default).
 CapabilityBoundingSet=
-
-# Remove access to unnecessary devices.
-PrivateDevices=true
-
-# Don't allow mounting new filesystems.
-ProtectControlGroups=true
-ProtectKernelModules=true
-ProtectKernelTunables=true
-
-# Lock the process to its own namespace where possible.
-ProtectClock=true
-ProtectHostname=true
 
 [Install]
 WantedBy=default.target
