@@ -38,10 +38,14 @@ const (
 
 // Websocket IDs for build-test streaming output.
 const (
-	WsBuildStdout = "build-stdout"
-	WsBuildStderr = "build-stderr"
-	WsRunStdout   = "run-stdout"
-	WsRunStderr   = "run-stderr"
+	WsBuildStdout  = "build-stdout"
+	WsBuildStderr  = "build-stderr"
+	WsBuildStdio   = "build-stdio"   // bidirectional: stdin + stdout (interactive mode)
+	WsBuildControl = "build-control" // signal/resize commands (interactive mode)
+	WsRunStdout    = "run-stdout"
+	WsRunStderr    = "run-stderr"
+	WsRunStdio     = "run-stdio"     // bidirectional: stdin + stdout (interactive mode)
+	WsRunControl   = "run-control"   // signal/resize commands (interactive mode)
 )
 
 var websocketUpgrader = websocket.Upgrader{
@@ -62,9 +66,12 @@ type BuildTestManager struct {
 type buildTestExecution struct {
 	taskKind string // "build-test-build" or "build-test-run"
 
-	websockets     map[string]*websocket.Conn
-	websocketsLock sync.Mutex
-	ioConnected    chan struct{}
+	interactive      bool // whether interactive mode is enabled
+	terminal         bool // whether a PTY should be allocated
+	websockets       map[string]*websocket.Conn
+	websocketsLock   sync.Mutex
+	ioConnected      chan struct{}
+	controlConnected chan struct{} // closed when control websocket is connected
 }
 
 // NewManager creates a new BuildTestManager.
@@ -116,11 +123,14 @@ func (m *BuildTestManager) tempDir(changeID string) string {
 
 // registerExecution creates a buildTestExecution for the given task and
 // registers it on the manager so that Connect can find it.
-func (m *BuildTestManager) registerExecution(taskID, taskKind string, wsIDs []string) *buildTestExecution {
+func (m *BuildTestManager) registerExecution(taskID, taskKind string, wsIDs []string, interactive, terminal bool) *buildTestExecution {
 	e := &buildTestExecution{
-		taskKind:    taskKind,
-		websockets:  make(map[string]*websocket.Conn),
-		ioConnected: make(chan struct{}),
+		taskKind:         taskKind,
+		interactive:      interactive,
+		terminal:         terminal,
+		websockets:       make(map[string]*websocket.Conn),
+		ioConnected:      make(chan struct{}),
+		controlConnected: make(chan struct{}),
 	}
 	// Populate expected websocket IDs with nil connections until connected.
 	for _, id := range wsIDs {
@@ -221,9 +231,26 @@ func (e *buildTestExecution) connect(r *http.Request, w http.ResponseWriter, web
 	defer e.websocketsLock.Unlock()
 	e.websockets[websocketID] = conn
 
-	// Check if all expected websockets are now connected.
+	// Signal that the control websocket is connected.
+	if websocketID == WsBuildControl || websocketID == WsRunControl {
+		select {
+		case <-e.controlConnected:
+			// Already closed.
+		default:
+			close(e.controlConnected)
+		}
+	}
+
+	// Check if all expected I/O websockets are now connected.
+	// For interactive mode, we consider the stdio and stderr websockets
+	// as the I/O set (control is separate). For non-interactive mode,
+	// stdout and stderr are the I/O set.
 	allConnected := true
-	for _, c := range e.websockets {
+	for key, c := range e.websockets {
+		// Control websocket is not part of the I/O set.
+		if key == WsBuildControl || key == WsRunControl {
+			continue
+		}
 		if c == nil {
 			allConnected = false
 			break
@@ -262,6 +289,23 @@ func (e *buildTestExecution) waitIOConnected(ctx context.Context, taskID string)
 		}
 		return ctx.Err()
 	case <-e.ioConnected:
+		return nil
+	}
+}
+
+// waitControlConnected waits till the control websocket is connected or the
+// connect timeout elapses (or the provided ctx is cancelled).
+func (e *buildTestExecution) waitControlConnected(ctx context.Context, taskID string) error {
+	ctx, cancel := context.WithTimeout(ctx, connectTimeout)
+	defer cancel()
+	select {
+	case <-ctx.Done():
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			logger.Noticef("Build-test %s: timeout waiting for control websocket connection", taskID)
+			return fmt.Errorf("build-test %s: timeout waiting for control websocket connection: %w", taskID, ctx.Err())
+		}
+		return ctx.Err()
+	case <-e.controlConnected:
 		return nil
 	}
 }

@@ -16,17 +16,22 @@ package buildteststate
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"sync"
+	"syscall"
 	"time"
 
+	"github.com/gorilla/websocket"
+	"golang.org/x/sys/unix"
 	"gopkg.in/tomb.v2"
 
 	"github.com/canonical/pebble/internals/logger"
 	"github.com/canonical/pebble/internals/overlord/state"
+	"github.com/canonical/pebble/internals/ptyutil"
 	"github.com/canonical/pebble/internals/reaper"
 	"github.com/canonical/pebble/internals/wsutil"
 )
@@ -66,8 +71,13 @@ func (m *BuildTestManager) doBuild(task *state.Task, tomb *tomb.Tomb) error {
 	}
 
 	// Register execution for websocket streaming.
-	wsIDs := []string{WsBuildStdout, WsBuildStderr}
-	e := m.registerExecution(task.ID(), buildTaskKind, wsIDs)
+	var wsIDs []string
+	if setup.Interactive {
+		wsIDs = []string{WsBuildStdio, WsBuildStderr, WsBuildControl}
+	} else {
+		wsIDs = []string{WsBuildStdout, WsBuildStderr}
+	}
+	e := m.registerExecution(task.ID(), buildTaskKind, wsIDs, setup.Interactive, setup.Terminal)
 	defer m.unregisterExecution(task.ID())
 
 	// Run snapcraft in the temp directory.
@@ -75,9 +85,24 @@ func (m *BuildTestManager) doBuild(task *state.Task, tomb *tomb.Tomb) error {
 	if setup.Timeout > 0 {
 		timeout = setup.Timeout
 	}
-	exitCode, stdout, stderr, err := m.runCommandStreaming("snapcraft", tempDir, timeout, tomb, e, WsBuildStdout, WsBuildStderr)
-	if err != nil {
-		return fmt.Errorf("cannot run snapcraft: %w", err)
+
+	var exitCode int
+	var stdout, stderr string
+	var buildErr error
+
+	if setup.Interactive {
+		ctx := tomb.Context(context.Background())
+		if timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, timeout)
+			defer cancel()
+		}
+		exitCode, stdout, stderr, buildErr = m.runCommandInteractive("snapcraft", tempDir, ctx, e, WsBuildStdio, WsBuildStderr, WsBuildControl)
+	} else {
+		exitCode, stdout, stderr, buildErr = m.runCommandStreaming("snapcraft", tempDir, timeout, tomb, e, WsBuildStdout, WsBuildStderr)
+	}
+	if buildErr != nil {
+		return fmt.Errorf("cannot run snapcraft: %w", buildErr)
 	}
 
 	// If the build failed, try cleaning and retrying once.
@@ -102,13 +127,23 @@ func (m *BuildTestManager) doBuild(task *state.Task, tomb *tomb.Tomb) error {
 		st.Unlock()
 
 		// Re-register execution for websocket streaming on retry.
-		e2 := m.registerExecution(task.ID(), buildTaskKind, wsIDs)
+		e2 := m.registerExecution(task.ID(), buildTaskKind, wsIDs, setup.Interactive, setup.Terminal)
 		defer m.unregisterExecution(task.ID())
 
 		// Retry the build.
-		exitCode, stdout, stderr, err = m.runCommandStreaming("snapcraft", tempDir, timeout, tomb, e2, WsBuildStdout, WsBuildStderr)
-		if err != nil {
-			return fmt.Errorf("cannot run snapcraft: %w", err)
+		if setup.Interactive {
+			ctx := tomb.Context(context.Background())
+			if timeout > 0 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, timeout)
+				defer cancel()
+			}
+			exitCode, stdout, stderr, buildErr = m.runCommandInteractive("snapcraft", tempDir, ctx, e2, WsBuildStdio, WsBuildStderr, WsBuildControl)
+		} else {
+			exitCode, stdout, stderr, buildErr = m.runCommandStreaming("snapcraft", tempDir, timeout, tomb, e2, WsBuildStdout, WsBuildStderr)
+		}
+		if buildErr != nil {
+			return fmt.Errorf("cannot run snapcraft: %w", buildErr)
 		}
 
 		// Store the results in the task's api-data, including retry info.
@@ -159,14 +194,17 @@ func (m *BuildTestManager) doRun(task *state.Task, tomb *tomb.Tomb) error {
 
 	tempDir := m.tempDir(changeID)
 
-	// Determine timeout from the build task's setup.
+	// Determine timeout and interactive settings from the build task's setup.
 	var timeout time.Duration
+	var interactive, terminal bool
 	st.Lock()
 	for _, t := range change.Tasks() {
 		if t.Kind() == buildTaskKind {
 			setupObj := st.Cached(buildTestSetupKey{t.ID()})
 			if setup, ok := setupObj.(*buildTestSetup); ok && setup != nil {
 				timeout = setup.Timeout
+				interactive = setup.Interactive
+				terminal = setup.Terminal
 			}
 			break
 		}
@@ -174,14 +212,33 @@ func (m *BuildTestManager) doRun(task *state.Task, tomb *tomb.Tomb) error {
 	st.Unlock()
 
 	// Register execution for websocket streaming.
-	wsIDs := []string{WsRunStdout, WsRunStderr}
-	e := m.registerExecution(task.ID(), runTaskKind, wsIDs)
+	var wsIDs []string
+	if interactive {
+		wsIDs = []string{WsRunStdio, WsRunStderr, WsRunControl}
+	} else {
+		wsIDs = []string{WsRunStdout, WsRunStderr}
+	}
+	e := m.registerExecution(task.ID(), runTaskKind, wsIDs, interactive, terminal)
 	defer m.unregisterExecution(task.ID())
 
 	// Run spread in the temp directory.
-	exitCode, stdout, stderr, err := m.runCommandStreaming("spread", tempDir, timeout, tomb, e, WsRunStdout, WsRunStderr)
-	if err != nil {
-		return fmt.Errorf("cannot run spread: %w", err)
+	var exitCode int
+	var stdout, stderr string
+	var runErr error
+
+	if interactive {
+		ctx := tomb.Context(context.Background())
+		if timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, timeout)
+			defer cancel()
+		}
+		exitCode, stdout, stderr, runErr = m.runCommandInteractive("spread", tempDir, ctx, e, WsRunStdio, WsRunStderr, WsRunControl)
+	} else {
+		exitCode, stdout, stderr, runErr = m.runCommandStreaming("spread", tempDir, timeout, tomb, e, WsRunStdout, WsRunStderr)
+	}
+	if runErr != nil {
+		return fmt.Errorf("cannot run spread: %w", runErr)
 	}
 
 	// Store the results in the task's api-data.
@@ -347,7 +404,389 @@ func runCommandBuffered(name string, dir string, ctx context.Context, extraArgs 
 	return exitCode, stdoutBuf.String(), stderrBuf.String(), nil
 }
 
-// maxOutputSize is the maximum number of bytes to capture from stdout/stderr.
+// buildTestCommand represents a command sent over the control websocket.
+type buildTestCommand struct {
+	Command string                `json:"command"`
+	Signal  *buildTestSignalArgs  `json:"signal,omitempty"`
+	Resize  *buildTestResizeArgs  `json:"resize,omitempty"`
+}
+
+type buildTestSignalArgs struct {
+	Name string `json:"name"`
+}
+
+type buildTestResizeArgs struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+// controlLoop reads commands from the control websocket and handles them
+// (signal forwarding, terminal resize). It's modeled after cmdstate's
+// execution.controlLoop.
+func (e *buildTestExecution) controlLoop(taskID string, pidCh <-chan int, stop <-chan struct{}, ptyFd int) {
+	logger.Debugf("Build-test %s: control handler waiting", taskID)
+	defer logger.Debugf("Build-test %s: control handler finished", taskID)
+
+	// Wait till we receive the process's PID (command started).
+	var pid int
+	select {
+	case pid = <-pidCh:
+		break
+	case <-stop:
+		return
+	}
+
+	// Wait till the control websocket is connected.
+	select {
+	case <-e.controlConnected:
+		break
+	case <-stop:
+		return
+	}
+
+	logger.Debugf("Build-test %s: control handler started for PID %d", taskID, pid)
+	for {
+		controlConn := e.getWebsocket(WsBuildControl)
+		if controlConn == nil {
+			controlConn = e.getWebsocket(WsRunControl)
+		}
+		if controlConn == nil {
+			logger.Debugf("Build-test %s: no control websocket", taskID)
+			break
+		}
+
+		mt, r, err := controlConn.NextReader()
+		if mt == websocket.CloseMessage {
+			break
+		}
+
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
+				logger.Debugf("Build-test %s: cannot get next websocket reader for PID %d: %v", taskID, pid, err)
+			}
+
+			if websocket.IsCloseError(err, websocket.CloseAbnormalClosure) {
+				err := unix.Kill(pid, unix.SIGKILL)
+				if err != nil {
+					logger.Noticef("Build-test %s: cannot send SIGKILL to pid %d: %v", taskID, pid, err)
+				} else {
+					logger.Debugf("Build-test %s: sent SIGKILL to pid %d", taskID, pid)
+				}
+			}
+
+			break
+		}
+
+		var command buildTestCommand
+		err = json.NewDecoder(r).Decode(&command)
+		if err != nil {
+			logger.Noticef("Build-test %s: cannot decode control websocket command: %v", taskID, err)
+			continue
+		}
+
+		switch {
+		case command.Command == "resize" && e.terminal:
+			if command.Resize == nil {
+				logger.Noticef(`Build-test %s: control command "resize" requires terminal width and height`, taskID)
+				continue
+			}
+			w, h := command.Resize.Width, command.Resize.Height
+			err = ptyutil.SetSize(ptyFd, w, h)
+			if err != nil {
+				logger.Noticef(`Build-test %s: control command "resize" cannot set terminal size to %dx%d: %v`, taskID, w, h, err)
+				continue
+			}
+			logger.Debugf(`Build-test %s: PID %d terminal resized to %dx%d`, taskID, pid, w, h)
+		case command.Command == "signal":
+			if command.Signal == nil {
+				logger.Noticef(`Build-test %s: control command "signal" requires signal name`, taskID)
+				continue
+			}
+			name := command.Signal.Name
+			sig := unix.SignalNum(name)
+			if sig == 0 {
+				logger.Noticef("Build-test %s: invalid signal name %q", taskID, name)
+				continue
+			}
+			err := unix.Kill(pid, sig)
+			if err != nil {
+				logger.Noticef("Build-test %s: cannot send %s to PID %d: %v", taskID, name, pid, err)
+				continue
+			}
+			logger.Debugf("Build-test %s: sent %s to PID %d", taskID, name, pid)
+		default:
+			logger.Noticef("Build-test %s: invalid control command %q", taskID, command.Command)
+		}
+	}
+}
+
+// runCommandInteractive runs a command with interactive support, using a PTY
+// when terminal mode is enabled, or pipes otherwise. It streams output to
+// websockets and captures to limitWriter for api-data storage.
+func (m *BuildTestManager) runCommandInteractive(name string, dir string, ctx context.Context, e *buildTestExecution, stdioWsID, stderrWsID, controlWsID string) (exitCode int, stdout string, stderr string, err error) {
+	// Wait for websocket connections (with timeout).
+	waitErr := e.waitIOConnected(ctx, name)
+	if waitErr != nil {
+		return -1, "", "", fmt.Errorf("build-test %s: cannot start interactive mode, websocket connections not established: %w", name, waitErr)
+	}
+
+	var beforeClosers []io.Closer
+	var afterClosers []io.Closer
+	var wgOutputSent sync.WaitGroup
+
+	// Closed to make the controlLoop stop early.
+	stopControl := make(chan struct{})
+	defer close(stopControl)
+
+	pidCh := make(chan int)
+	childDead := make(chan struct{})
+
+	var stdoutLimit, stderrLimit limitWriter
+
+	if e.terminal {
+		// Allocate a pseudo-terminal.
+		uid, gid := os.Getuid(), os.Getgid()
+		master, slave, ptyErr := ptyutil.OpenPty(int64(uid), int64(gid))
+		if ptyErr != nil {
+			return -1, "", "", fmt.Errorf("cannot allocate PTY: %w", ptyErr)
+		}
+		afterClosers = append(afterClosers, master)
+		beforeClosers = append(beforeClosers, slave)
+
+		// Start the control loop for signal/resize handling.
+		go e.controlLoop(name, pidCh, stopControl, int(master.Fd()))
+
+		// Mirror PTY output to the stdio websocket and capture to limitWriter.
+		stdioConn := e.getWebsocket(stdioWsID)
+		wgOutputSent.Go(func() {
+			// Use a pipe to capture output from MirrorToWebsocket.
+			// MirrorToWebsocket writes to the websocket directly, so we
+			// need a different approach: read from master via a tee.
+			// We'll use ExecReaderToChannel + manual websocket writing
+			// with a TeeReader for capture.
+			in := wsutil.ExecReaderToChannel(master, -1, childDead, int(master.Fd()))
+			for {
+				buf, ok := <-in
+				if !ok {
+					_ = master.Close()
+					// Capture any remaining output.
+					stdoutLimit.Write(buf)
+					// Send write barrier.
+					stdioConn.WriteMessage(websocket.TextMessage, endCommandJSON)
+					return
+				}
+				// Capture output to limitWriter.
+				stdoutLimit.Write(buf)
+				// Send to websocket.
+				err := stdioConn.WriteMessage(websocket.BinaryMessage, buf)
+				if err != nil {
+					logger.Debugf("Build-test %s: error writing to stdio websocket: %v", name, err)
+					break
+				}
+			}
+			closeMsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
+			stdioConn.WriteMessage(websocket.CloseMessage, closeMsg)
+			master.Close()
+		})
+
+		if e.interactive {
+			// Interactive: receive stdin from stdio websocket and write to PTY.
+			go func() {
+				<-wsutil.WebsocketRecvStream(master, stdioConn)
+				// Send Ctrl-D to indicate end of input.
+				master.Write([]byte{byte(unix.VEOF)})
+			}()
+		} else {
+			// Non-interactive with PTY: receive stdin from stdio websocket
+			// and write to the PTY's stdin pipe.
+			stdinReader, stdinWriter, pipeErr := os.Pipe()
+			if pipeErr != nil {
+				return -1, "", "", fmt.Errorf("cannot create stdin pipe: %w", pipeErr)
+			}
+			afterClosers = append(afterClosers, stdinReader)
+			go func() {
+				<-wsutil.WebsocketRecvStream(stdinWriter, stdioConn)
+				stdinWriter.Close()
+			}()
+		}
+
+		// Handle stderr separately if a stderr websocket is connected.
+		if stderrConn := e.getWebsocket(stderrWsID); stderrConn != nil {
+			// In PTY mode, stderr goes to the same PTY, so we don't have
+			// a separate stderr stream. Just skip stderr websocket in this case.
+			logger.Debugf("Build-test %s: stderr websocket not used in PTY terminal mode", name)
+		}
+
+		// Build the command.
+		cmd := exec.CommandContext(ctx, name)
+		cmd.Dir = dir
+		cmd.Stdin = slave
+		cmd.Stdout = slave
+		cmd.Stderr = slave
+		cmd.WaitDelay = time.Second
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Setsid:  true,
+			Setctty: true,
+		}
+
+		err = reaper.StartCommand(cmd)
+		if err != nil {
+			for _, closer := range beforeClosers {
+				_ = closer.Close()
+			}
+			for _, closer := range afterClosers {
+				_ = closer.Close()
+			}
+			return -1, "", "", fmt.Errorf("cannot start %s: %w", name, err)
+		}
+
+		// Send PID to control loop.
+		pidCh <- cmd.Process.Pid
+
+		exitCode, waitErr = reaper.WaitCommand(cmd)
+		if waitErr != nil {
+			logger.Noticef("%s wait error: %v", name, waitErr)
+		}
+
+		// Signal that the child is dead for ExecReaderToChannel.
+		close(childDead)
+
+		// Close the write end of pipes so streaming goroutines get EOF.
+		for _, closer := range beforeClosers {
+			_ = closer.Close()
+		}
+
+		// Close the control websocket.
+		controlConn := e.getWebsocket(controlWsID)
+		if controlConn != nil {
+			_ = controlConn.Close()
+		}
+
+		// Wait for all output to be sent.
+		wgOutputSent.Wait()
+
+		for _, closer := range afterClosers {
+			_ = closer.Close()
+		}
+
+		if ctx.Err() == context.DeadlineExceeded {
+			return exitCode, stdoutLimit.String(), stderrLimit.String(), fmt.Errorf("%s timed out after %v", name, ctx.Err())
+		}
+		if ctx.Err() == context.Canceled {
+			return exitCode, stdoutLimit.String(), stderrLimit.String(), fmt.Errorf("%s interrupted", name)
+		}
+
+		return exitCode, stdoutLimit.String(), stderrLimit.String(), nil
+	}
+
+	// Non-PTY interactive mode: use pipes for stdin/stdout/stderr.
+	go e.controlLoop(name, pidCh, stopControl, -1)
+
+	// Stdin: receive from stdio websocket and write to cmd.Stdin pipe.
+	stdioConn := e.getWebsocket(stdioWsID)
+	stdinReader, stdinWriter, pipeErr := os.Pipe()
+	if pipeErr != nil {
+		return -1, "", "", fmt.Errorf("cannot create stdin pipe: %w", pipeErr)
+	}
+	afterClosers = append(afterClosers, stdinReader)
+	go func() {
+		<-wsutil.WebsocketRecvStream(stdinWriter, stdioConn)
+		stdinWriter.Close()
+	}()
+
+	// Stdout: pipe -> tee(limitWriter + websocket)
+	stdoutReader, stdoutWriter, pipeErr := os.Pipe()
+	if pipeErr != nil {
+		return -1, "", "", fmt.Errorf("cannot create stdout pipe: %w", pipeErr)
+	}
+	beforeClosers = append(beforeClosers, stdoutWriter)
+
+	wgOutputSent.Go(func() {
+		teeReader := io.TeeReader(stdoutReader, &stdoutLimit)
+		<-wsutil.WebsocketSendStream(stdioConn, teeReader, -1)
+		stdoutReader.Close()
+	})
+
+	// Stderr: pipe -> tee(limitWriter + websocket) if stderr websocket exists.
+	stderrConn := e.getWebsocket(stderrWsID)
+	var stderrWriter *os.File
+	if stderrConn != nil {
+		stderrReader, stderrPipeWriter, pipeErr := os.Pipe()
+		if pipeErr != nil {
+			return -1, "", "", fmt.Errorf("cannot create stderr pipe: %w", pipeErr)
+		}
+		beforeClosers = append(beforeClosers, stderrPipeWriter)
+		stderrWriter = stderrPipeWriter
+
+		wgOutputSent.Go(func() {
+			teeReader := io.TeeReader(stderrReader, &stderrLimit)
+			<-wsutil.WebsocketSendStream(stderrConn, teeReader, -1)
+			stderrReader.Close()
+		})
+	}
+
+	cmd := exec.CommandContext(ctx, name)
+	cmd.Dir = dir
+	cmd.WaitDelay = time.Second
+	cmd.Stdin = stdinReader
+	cmd.Stdout = stdoutWriter
+	if stderrWriter != nil {
+		cmd.Stderr = stderrWriter
+	} else {
+		cmd.Stderr = stdoutWriter // combine stderr into stdout
+	}
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setsid: true,
+	}
+
+	err = reaper.StartCommand(cmd)
+	if err != nil {
+		for _, closer := range beforeClosers {
+			_ = closer.Close()
+		}
+		for _, closer := range afterClosers {
+			_ = closer.Close()
+		}
+		return -1, "", "", fmt.Errorf("cannot start %s: %w", name, err)
+	}
+
+	// Send PID to control loop.
+	pidCh <- cmd.Process.Pid
+
+	exitCode, waitErr = reaper.WaitCommand(cmd)
+	if waitErr != nil {
+		logger.Noticef("%s wait error: %v", name, waitErr)
+	}
+
+	// Close the write end of the pipes so the streaming goroutines get EOF.
+	for _, closer := range beforeClosers {
+		_ = closer.Close()
+	}
+
+	// Close the control websocket.
+	controlConn := e.getWebsocket(controlWsID)
+	if controlConn != nil {
+		_ = controlConn.Close()
+	}
+
+	// Wait for all output to be sent over websockets.
+	wgOutputSent.Wait()
+
+	for _, closer := range afterClosers {
+		_ = closer.Close()
+	}
+
+	if ctx.Err() == context.DeadlineExceeded {
+		return exitCode, stdoutLimit.String(), stderrLimit.String(), fmt.Errorf("%s timed out after %v", name, ctx.Err())
+	}
+	if ctx.Err() == context.Canceled {
+		return exitCode, stdoutLimit.String(), stderrLimit.String(), fmt.Errorf("%s interrupted", name)
+	}
+
+	return exitCode, stdoutLimit.String(), stderrLimit.String(), nil
+}
+
+var endCommandJSON = []byte(`{"command":"end"}`)
 const maxOutputSize = 10 * 1024 * 1024 // 10MB
 
 // limitWriter is an io.Writer that limits the total bytes written.

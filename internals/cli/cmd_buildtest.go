@@ -16,11 +16,16 @@ package cli
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
 	"time"
 
 	"github.com/canonical/go-flags"
+	"golang.org/x/sys/unix"
 
 	"github.com/canonical/pebble/client"
+	"github.com/canonical/pebble/internals/logger"
+	"github.com/canonical/pebble/internals/ptyutil"
 )
 
 const cmdBuildTestSummary = "Build source with snapcraft and run spread tests"
@@ -30,6 +35,10 @@ builds it using snapcraft, and runs spread tests. The output includes the
 stdout, stderr, and exit code from both the build and test steps.
 
 If the build step fails, the test step is skipped.
+
+Use --debug to enable interactive mode, which allows you to send input
+to the build and test processes (for example, to debug a failing build).
+This allocates a pseudo-terminal and forwards signals like Ctrl-C.
 `
 
 type cmdBuildTest struct {
@@ -37,6 +46,7 @@ type cmdBuildTest struct {
 
 	Timeout time.Duration `long:"timeout"`
 	Stream  bool          `long:"stream"`
+	Debug   bool          `long:"debug"`
 
 	Positional struct {
 		SourcePath string `positional-arg-name:"<source-path>" required:"1"`
@@ -56,6 +66,7 @@ func init() {
 		ArgsHelp: map[string]string{
 			"--timeout": "Timeout for the overall build and test operation",
 			"--stream":  "Stream build and test output in real-time",
+			"--debug":   "Enable interactive debug mode (allocate PTY, forward stdin and signals)",
 		},
 		New: func(opts *CmdOptions) flags.Commander {
 			return &cmdBuildTest{client: opts.Client}
@@ -71,6 +82,80 @@ func (cmd *cmdBuildTest) Execute(args []string) error {
 	opts := &client.BuildTestOptions{
 		SourcePath: cmd.Positional.SourcePath,
 		Timeout:    cmd.Timeout,
+	}
+
+	if cmd.Debug {
+		// Debug mode implies streaming and interactive.
+		opts.Stdout = Stdout
+		opts.Stderr = Stderr
+		opts.Stdin = Stdin
+		opts.Interactive = true
+		opts.Terminal = true
+
+		// Detect if stdin/stdout are TTYs.
+		stdoutIsTerminal := ptyutil.IsTerminal(unix.Stdout)
+		stdinIsTerminal := ptyutil.IsTerminal(unix.Stdin)
+
+		// Set terminal to raw mode if we have a TTY.
+		if stdoutIsTerminal && stdinIsTerminal {
+			oldState, err := ptyutil.MakeRaw(unix.Stdin)
+			if err != nil {
+				return fmt.Errorf("cannot change terminal to raw mode: %v", err)
+			}
+			defer ptyutil.Restore(unix.Stdin, oldState)
+		}
+
+		// Start the interactive build-test process.
+		process, err := cmd.client.BuildTestInteractive(opts)
+		if err != nil {
+			return err
+		}
+
+		// Start the control goroutine to handle signals and window resizing.
+		stopControl := make(chan struct{})
+		defer close(stopControl)
+		sighup := make(chan struct{})
+		go buildTestControlHandler(process, stdoutIsTerminal, stopControl, sighup)
+
+		finished := make(chan error)
+		go func() {
+			result, waitErr := process.Wait()
+			if waitErr != nil {
+				finished <- waitErr
+				return
+			}
+			// Print exit codes.
+			fmt.Fprintf(Stdout, "BUILD exit code: %d\n", result.Build.ExitCode)
+			if result.Run != nil {
+				fmt.Fprintf(Stdout, "RUN exit code: %d\n", result.Run.ExitCode)
+			}
+			// Return exit code from the run step if present, otherwise from build.
+			if result.Run != nil && result.Run.ExitCode != 0 {
+				finished <- &exitStatus{result.Run.ExitCode}
+				return
+			}
+			if result.Build.ExitCode != 0 {
+				finished <- &exitStatus{result.Build.ExitCode}
+				return
+			}
+			finished <- nil
+		}()
+
+		// Wait for either the process to finish, or SIGHUP to be received.
+		select {
+		case err = <-finished:
+			switch e := err.(type) {
+			case nil:
+				return nil
+			case *exitStatus:
+				panic(e)
+			default:
+				return err
+			}
+		case <-sighup:
+			fmt.Fprintf(os.Stderr, "SIGHUP received, exiting\r\n")
+			return nil
+		}
 	}
 
 	if cmd.Stream {
@@ -148,4 +233,59 @@ func splitLines(s string) []string {
 		lines = append(lines, s[start:])
 	}
 	return lines
+}
+
+func buildTestControlHandler(process *client.BuildTestProcess, terminal bool, stop <-chan struct{}, sighup chan<- struct{}) {
+	ch := make(chan os.Signal, 10)
+	signal.Notify(ch,
+		unix.SIGWINCH, unix.SIGHUP,
+		unix.SIGTERM, unix.SIGINT, unix.SIGQUIT, unix.SIGABRT,
+		unix.SIGTSTP, unix.SIGTTIN, unix.SIGTTOU, unix.SIGUSR1,
+		unix.SIGUSR2, unix.SIGSEGV, unix.SIGCONT)
+
+	for {
+		var sig os.Signal
+		select {
+		case sig = <-ch:
+		case <-stop:
+			return
+		}
+
+		switch sig {
+		case unix.SIGWINCH:
+			if !terminal {
+				logger.Debugf("Received SIGWINCH but not in terminal mode, ignoring")
+				break
+			}
+			logger.Debugf("Received '%s' signal, updating window geometry", sig)
+			width, height, err := ptyutil.GetSize(unix.Stdout)
+			if err != nil {
+				logger.Debugf("Cannot get terminal size: %v", err)
+				break
+			}
+			logger.Debugf("Window size is now: %dx%d", width, height)
+			err = process.SendResize(width, height)
+			if err != nil {
+				logger.Debugf("Cannot set terminal size: %v", err)
+				break
+			}
+		case unix.SIGHUP:
+			logger.Debugf("Received 'SIGHUP' signal, forwarding and exiting")
+			err := process.SendSignal("SIGHUP")
+			if err != nil {
+				logger.Debugf("Cannot forward signal '%s': %v", sig, err)
+				break
+			}
+			close(sighup)
+		case unix.SIGTERM, unix.SIGINT, unix.SIGQUIT, unix.SIGABRT,
+			unix.SIGTSTP, unix.SIGTTIN, unix.SIGTTOU, unix.SIGUSR1,
+			unix.SIGUSR2, unix.SIGSEGV, unix.SIGCONT:
+			logger.Debugf("Received '%s' signal, forwarding to build-test process", sig)
+			err := process.SendSignal(unix.SignalName(sig.(unix.Signal)))
+			if err != nil {
+				logger.Debugf("Cannot forward signal '%s': %v", sig, err)
+				break
+			}
+		}
+	}
 }

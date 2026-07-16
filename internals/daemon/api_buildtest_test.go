@@ -277,3 +277,49 @@ func createTestTarballData(c *C, files map[string]string) []byte {
 
 	return buf.Bytes()
 }
+
+func (s *apiSuite) TestPostBuildTestInteractive(c *C) {
+	d := s.daemon(c)
+	s.startOverlord()
+
+	tarballData := createTestTarballData(c, map[string]string{"hello.txt": "hello"})
+
+	body := &bytes.Buffer{}
+	mw := multipart.NewWriter(body)
+
+	// Write metadata with interactive and terminal flags.
+	part, err := mw.CreatePart(textproto.MIMEHeader{
+		"Content-Type":        {"application/json"},
+		"Content-Disposition": {`form-data; name="request"`},
+	})
+	c.Assert(err, IsNil)
+	err = json.NewEncoder(part).Encode(&buildTestMetadata{Interactive: true, Terminal: true})
+	c.Assert(err, IsNil)
+
+	// Write source part.
+	sourcePart, err := mw.CreatePart(textproto.MIMEHeader{
+		"Content-Type":        {"application/gzip"},
+		"Content-Disposition": {`form-data; name="source"; filename="source.tar.gz"`},
+	})
+	c.Assert(err, IsNil)
+	_, err = io.Copy(sourcePart, bytes.NewReader(tarballData))
+	c.Assert(err, IsNil)
+	mw.Close()
+
+	req, err := http.NewRequest("POST", "/v1/build-test", body)
+	c.Assert(err, IsNil)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+
+	cmd := apiCmd("/v1/build-test")
+	cmd.d = d
+
+	rec := httptest.NewRecorder()
+	handler := v1PostBuildTest(cmd, req, nil)
+	handler.ServeHTTP(rec, req)
+
+	c.Check(rec.Code, Equals, http.StatusAccepted)
+	var rsp resp
+	c.Assert(json.NewDecoder(rec.Body).Decode(&rsp), IsNil)
+	c.Check(rsp.Type, Equals, ResponseTypeAsync)
+	c.Check(rsp.Change, Not(Equals), "")
+}

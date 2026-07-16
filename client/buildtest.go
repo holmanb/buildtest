@@ -29,6 +29,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/canonical/pebble/internals/logger"
 	"github.com/canonical/pebble/internals/wsutil"
 )
 
@@ -50,6 +51,19 @@ type BuildTestOptions struct {
 	// If set, output is streamed in real-time via websockets. If nil, output
 	// is captured and returned in the result.
 	Stderr io.Writer
+
+	// Stdin is an optional reader for sending input to the build/run processes.
+	// Only used when Interactive is true.
+	Stdin io.Reader
+
+	// Interactive enables interactive mode, allowing stdin to be forwarded
+	// to the build/run processes via websockets. When true, Terminal should
+	// also be set to true for proper PTY support.
+	Interactive bool
+
+	// Terminal allocates a pseudo-terminal for the build/run processes.
+	// Typically set to true when Interactive is true.
+	Terminal bool
 }
 
 // BuildTestResult holds the result of a build-test request.
@@ -75,7 +89,9 @@ type RunResult struct {
 }
 
 type buildTestMetadataPayload struct {
-	Timeout string `json:"timeout,omitempty"`
+	Timeout     string `json:"timeout,omitempty"`
+	Interactive bool   `json:"interactive,omitempty"`
+	Terminal    bool   `json:"terminal,omitempty"`
 }
 
 // BuildTest uploads the source code from SourcePath, builds it with snapcraft,
@@ -105,6 +121,10 @@ func (client *Client) BuildTest(opts *BuildTestOptions) (*BuildTestResult, error
 	metadata := buildTestMetadataPayload{}
 	if opts.Timeout != 0 {
 		metadata.Timeout = opts.Timeout.String()
+	}
+	if opts.Interactive {
+		metadata.Interactive = true
+		metadata.Terminal = opts.Terminal
 	}
 	if err := json.NewEncoder(part).Encode(&metadata); err != nil {
 		return nil, fmt.Errorf("cannot encode metadata: %w", err)
@@ -195,6 +215,81 @@ func (client *Client) BuildTest(opts *BuildTestOptions) (*BuildTestResult, error
 // we must connect to the run task's websockets only after the build task
 // has completed, since the run task's execution is not registered until
 // it starts running.
+// BuildTestInteractive starts an interactive build-test session. It returns
+// a BuildTestProcess that can be used to send signals, resize the terminal,
+// and wait for completion. This is a non-blocking call — the caller should
+// set up signal forwarding and then call Wait() on the returned process.
+//
+// Unlike BuildTest(), this method requires Stdin, Stdout, and Stderr to be
+// set, and Interactive and Terminal should both be true.
+func (client *Client) BuildTestInteractive(opts *BuildTestOptions) (*BuildTestProcess, error) {
+	// Create a tarball from the source directory.
+	tarball, err := createSourceTarball(opts.SourcePath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create source tarball: %w", err)
+	}
+	defer os.Remove(tarball.Name())
+	defer tarball.Close()
+
+	// Build the multipart request.
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+
+	// Encode metadata part.
+	part, err := mw.CreatePart(textproto.MIMEHeader{
+		"Content-Type":        {"application/json"},
+		"Content-Disposition": {`form-data; name="request"`},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cannot encode metadata in request payload: %w", err)
+	}
+
+	metadata := buildTestMetadataPayload{}
+	if opts.Timeout != 0 {
+		metadata.Timeout = opts.Timeout.String()
+	}
+	metadata.Interactive = true
+	metadata.Terminal = opts.Terminal
+	if err := json.NewEncoder(part).Encode(&metadata); err != nil {
+		return nil, fmt.Errorf("cannot encode metadata: %w", err)
+	}
+
+	// Encode source tarball part.
+	sourcePart, err := mw.CreatePart(textproto.MIMEHeader{
+		"Content-Type":        {"application/gzip"},
+		"Content-Disposition": {`form-data; name="source"; filename="source.tar.gz"`},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cannot encode source in request payload: %w", err)
+	}
+
+	// Write the tarball content.
+	if _, err := tarball.Seek(0, 0); err != nil {
+		return nil, fmt.Errorf("cannot seek tarball: %w", err)
+	}
+	if _, err := io.Copy(sourcePart, tarball); err != nil {
+		return nil, fmt.Errorf("cannot write source tarball: %w", err)
+	}
+
+	// Close the multipart writer and capture the complete body.
+	contentType := mw.FormDataContentType()
+	mw.Close()
+
+	// Send the async request.
+	resp, err := client.Requester().Do(context.Background(), &RequestOptions{
+		Type:    AsyncRequest,
+		Method:  "POST",
+		Path:    "/v1/build-test",
+		Headers: map[string]string{"Content-Type": contentType},
+		Body:    bytes.NewReader(body.Bytes()),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return client.buildTestInteractive(resp.ChangeID, opts)
+}
+
 func (client *Client) buildTestStreaming(changeID string, opts *BuildTestOptions) (*BuildTestResult, error) {
 	// Poll the change until tasks are available, so we can get task IDs
 	// and connect to websockets before the tasks complete.
@@ -354,6 +449,274 @@ func (client *Client) streamTaskOutput(taskID, prefix string, stdout, stderr io.
 	}
 
 	return stdoutDone, stderrDone
+}
+
+// BuildTestProcess represents a running interactive build-test process.
+// Use Wait to wait for it to finish.
+type BuildTestProcess struct {
+	changeID    string
+	client      *Client
+	timeout     time.Duration
+	writesDone  chan struct{}
+	controlConn jsonWriter
+}
+
+// buildTestCommand represents a command sent over the control websocket.
+type buildTestCommand struct {
+	Command string                `json:"command"`
+	Signal  *buildTestSignalArgs  `json:"signal,omitempty"`
+	Resize  *buildTestResizeArgs  `json:"resize,omitempty"`
+}
+
+type buildTestSignalArgs struct {
+	Name string `json:"name"`
+}
+
+type buildTestResizeArgs struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+// SendSignal sends a signal to the running build or run process.
+func (p *BuildTestProcess) SendSignal(signal string) error {
+	msg := buildTestCommand{
+		Command: "signal",
+		Signal: &buildTestSignalArgs{
+			Name: signal,
+		},
+	}
+	return p.controlConn.WriteJSON(msg)
+}
+
+// SendResize sends a terminal resize message to the running process.
+func (p *BuildTestProcess) SendResize(width, height int) error {
+	msg := buildTestCommand{
+		Command: "resize",
+		Resize: &buildTestResizeArgs{
+			Width:  width,
+			Height: height,
+		},
+	}
+	return p.controlConn.WriteJSON(msg)
+}
+
+// Wait waits for the build-test process to finish and returns the result.
+func (p *BuildTestProcess) Wait() (*BuildTestResult, error) {
+	waitOpts := &WaitChangeOptions{}
+	if p.timeout != 0 {
+		waitOpts.Timeout = p.timeout + 30*time.Second
+	}
+	change, err := p.client.WaitChange(p.changeID, waitOpts)
+	if err != nil {
+		return nil, fmt.Errorf("cannot wait for build-test to complete: %w", err)
+	}
+	if change.Err != "" {
+		return nil, errors.New(change.Err)
+	}
+
+	// Wait for any remaining I/O to be flushed.
+	<-p.writesDone
+
+	// Extract results from the completed change.
+	result := &BuildTestResult{}
+	for _, task := range change.Tasks {
+		switch task.Kind {
+		case "build-test-build":
+			result.Build = BuildResult{
+				ExitCode:         taskGetInt(task, "exit-code"),
+				Retried:          taskGetBool(task, "retried"),
+				OriginalExitCode: taskGetInt(task, "original-exit-code"),
+			}
+		case "build-test-run":
+			result.Run = &RunResult{
+				ExitCode: taskGetInt(task, "exit-code"),
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// buildTestInteractive handles the interactive case where the user wants
+// to send stdin to the build/run processes. It connects to stdio and
+// control websockets for each task phase.
+func (client *Client) buildTestInteractive(changeID string, opts *BuildTestOptions) (*BuildTestProcess, error) {
+	// Poll the change until tasks are available.
+	var change *Change
+	for {
+		var err error
+		change, err = client.Change(changeID)
+		if err != nil {
+			return nil, fmt.Errorf("cannot get change %q: %w", changeID, err)
+		}
+		if len(change.Tasks) > 0 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Find the build and run task IDs.
+	var buildTaskID, runTaskID string
+	for _, task := range change.Tasks {
+		switch task.Kind {
+		case "build-test-build":
+			buildTaskID = task.ID
+		case "build-test-run":
+			runTaskID = task.ID
+		}
+	}
+
+	stdin := opts.Stdin
+	if stdin == nil {
+		stdin = bytes.NewReader(nil)
+	}
+	stdout := opts.Stdout
+	if stdout == nil {
+		stdout = io.Discard
+	}
+
+	// Connect to the build task's websockets.
+	var writesDone chan struct{}
+	var controlConn jsonWriter
+
+	if buildTaskID != "" {
+		// Connect to build control websocket.
+		buildControlConn, err := client.getTaskWebsocket(buildTaskID, "build-control")
+		if err != nil {
+			return nil, fmt.Errorf("cannot connect to build control websocket: %w", err)
+		}
+		controlConn = buildControlConn
+
+		// Connect to build stdio websocket (bidirectional).
+		buildStdioConn, err := client.getTaskWebsocket(buildTaskID, "build-stdio")
+		if err != nil {
+			return nil, fmt.Errorf("cannot connect to build stdio websocket: %w", err)
+		}
+
+		// Forward stdin to the stdio websocket.
+		stdinDone := wsutil.WebsocketSendStream(buildStdioConn, stdin, -1)
+
+		// Receive stdout from the stdio websocket.
+		stdoutDone := wsutil.WebsocketRecvStream(stdout, buildStdioConn)
+
+		// Connect to build stderr websocket if needed.
+		var stderrDone chan bool
+		var buildStderrConn clientWebsocket
+		if opts.Stderr != nil {
+			buildStderrConn, err = client.getTaskWebsocket(buildTaskID, "build-stderr")
+			if err == nil {
+				stderrDone = wsutil.WebsocketRecvStream(opts.Stderr, buildStderrConn)
+			}
+		}
+
+		// Set up writesDone channel.
+		writesDone = make(chan struct{})
+		go func() {
+			<-stdinDone
+			<-stdoutDone
+			if stderrDone != nil {
+				<-stderrDone
+			}
+			_ = buildStdioConn.Close()
+			if buildStderrConn != nil {
+				_ = buildStderrConn.Close()
+			}
+			_ = buildControlConn.Close()
+			close(writesDone)
+		}()
+	}
+
+	// Wait for the build task to complete before connecting to run websockets.
+	waitOpts := &WaitChangeOptions{}
+	if opts.Timeout != 0 {
+		waitOpts.Timeout = opts.Timeout + 30*time.Second
+	}
+
+	for {
+		change, err := client.Change(changeID)
+		if err != nil {
+			return nil, fmt.Errorf("cannot get change %q: %w", changeID, err)
+		}
+		if change.Err != "" {
+			return nil, errors.New(change.Err)
+		}
+
+		buildDone := false
+		for _, task := range change.Tasks {
+			if task.Kind == "build-test-build" && task.Status == "Done" {
+				buildDone = true
+			}
+		}
+		if buildDone || change.Ready {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Connect to the run task's websockets if the build succeeded.
+	if runTaskID != "" && change.Err == "" {
+		buildFailed := false
+		for _, task := range change.Tasks {
+			if task.Kind == "build-test-build" && taskGetInt(task, "exit-code") != 0 {
+				buildFailed = true
+			}
+		}
+		if !buildFailed {
+			// Connect to run control websocket.
+			runControlConn, err := client.getTaskWebsocket(runTaskID, "run-control")
+			if err != nil {
+				logger.Debugf("Cannot connect to run control websocket: %v", err)
+			} else {
+				controlConn = runControlConn
+			}
+
+			// Connect to run stdio websocket.
+			runStdioConn, err := client.getTaskWebsocket(runTaskID, "run-stdio")
+			if err != nil {
+				logger.Debugf("Cannot connect to run stdio websocket: %v", err)
+			} else {
+				// Forward stdin to the run stdio websocket.
+				runStdinDone := wsutil.WebsocketSendStream(runStdioConn, stdin, -1)
+				// Receive stdout from the run stdio websocket.
+				runStdoutDone := wsutil.WebsocketRecvStream(stdout, runStdioConn)
+
+				// Connect to run stderr websocket if needed.
+				var runStderrDone chan bool
+				var runStderrConn clientWebsocket
+				if opts.Stderr != nil {
+					runStderrConn, err = client.getTaskWebsocket(runTaskID, "run-stderr")
+					if err == nil {
+						runStderrDone = wsutil.WebsocketRecvStream(opts.Stderr, runStderrConn)
+					}
+				}
+
+				// Wait for run I/O to complete.
+				go func() {
+					<-runStdinDone
+					<-runStdoutDone
+					if runStderrDone != nil {
+						<-runStderrDone
+					}
+					_ = runStdioConn.Close()
+					if runStderrConn != nil {
+						_ = runStderrConn.Close()
+					}
+					if runControlConn != nil {
+						_ = runControlConn.Close()
+					}
+				}()
+			}
+		}
+	}
+
+	process := &BuildTestProcess{
+		changeID:    changeID,
+		client:      client,
+		timeout:     opts.Timeout,
+		writesDone:  writesDone,
+		controlConn: controlConn,
+	}
+	return process, nil
 }
 
 // taskGetString extracts a string value from a task's data, returning "" if not found.

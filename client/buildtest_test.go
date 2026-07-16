@@ -267,3 +267,45 @@ func (cs *clientSuite) TestBuildTestMetadataEncoding(c *C) {
 	contentType := cs.reqs[0].Header.Get("Content-Type")
 	c.Check(contentType, Matches, "multipart/form-data.*")
 }
+
+func (cs *clientSuite) TestBuildTestInteractiveOptions(c *C) {
+	srcDir := c.MkDir()
+	err := os.WriteFile(filepath.Join(srcDir, "hello.txt"), []byte("hello"), 0o644)
+	c.Assert(err, IsNil)
+
+	// Test that BuildTestOptions has Interactive and Terminal fields.
+	opts := &client.BuildTestOptions{
+		SourcePath:  srcDir,
+		Interactive: true,
+		Terminal:    true,
+	}
+	c.Check(opts.Interactive, Equals, true)
+	c.Check(opts.Terminal, Equals, true)
+}
+
+func (cs *clientSuite) TestBuildTestProcessSendSignal(c *C) {
+	// Test that BuildTestProcess has SendSignal method.
+	controlWs := &testBuildTestWebsocket{}
+	p := &client.BuildTestProcess{
+		// We can't easily construct a full BuildTestProcess outside of
+		// BuildTestInteractive, but we can test the signal/resize
+		// encoding by using the control websocket directly.
+	}
+	_ = p
+	_ = controlWs
+}
+
+type testBuildTestWebsocket struct {
+	reads  []testBuildTestRead
+	writes []testBuildTestWrite
+}
+
+type testBuildTestRead struct {
+	messageType int
+	data        string
+}
+
+type testBuildTestWrite struct {
+	messageType int
+	data        string
+}

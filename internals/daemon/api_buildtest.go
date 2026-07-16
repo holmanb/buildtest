@@ -28,8 +28,10 @@ import (
 )
 
 type buildTestMetadata struct {
-	SourcePath string `json:"source-path,omitempty"`
-	Timeout    string `json:"timeout,omitempty"`
+	SourcePath  string `json:"source-path,omitempty"`
+	Timeout     string `json:"timeout,omitempty"`
+	Interactive bool   `json:"interactive,omitempty"`
+	Terminal    bool   `json:"terminal,omitempty"`
 }
 
 func v1PostBuildTest(c *Command, req *http.Request, user *UserState) Response {
@@ -107,6 +109,8 @@ func v1PostBuildTest(c *Command, req *http.Request, user *UserState) Response {
 	args := &buildteststate.BuildTestArgs{
 		SourceTarball: tarballPath,
 		Timeout:       timeout,
+		Interactive:   metadata.Interactive,
+		Terminal:      metadata.Terminal,
 	}
 
 	ts, err := buildteststate.BuildTest(st, args)

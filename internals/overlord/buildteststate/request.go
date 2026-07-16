@@ -40,6 +40,12 @@ type BuildTestArgs struct {
 	SourceTarball string
 	// Timeout is the optional overall timeout for the operation.
 	Timeout time.Duration
+	// Interactive enables interactive mode, allowing stdin to be forwarded
+	// to the build/run processes via websockets.
+	Interactive bool
+	// Terminal allocates a pseudo-terminal for the build/run processes.
+	// Typically set to true when Interactive is true.
+	Terminal bool
 }
 
 // buildTestSetup is stored in the state cache to specify the args for a build-test.
@@ -47,6 +53,8 @@ type buildTestSetup struct {
 	SourceTarball string
 	Timeout       time.Duration
 	RetryCount    int
+	Interactive   bool
+	Terminal      bool
 }
 
 // buildTestSetupKey is used as a cache key for the build-test setup.
@@ -66,6 +74,8 @@ func BuildTest(st *state.State, args *BuildTestArgs) (*state.TaskSet, error) {
 	setup := &buildTestSetup{
 		SourceTarball: args.SourceTarball,
 		Timeout:       args.Timeout,
+		Interactive:   args.Interactive,
+		Terminal:      args.Terminal,
 	}
 	st.Cache(buildTestSetupKey{buildTask.ID()}, setup)
 

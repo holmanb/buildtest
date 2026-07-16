@@ -35,14 +35,18 @@ var (
 
 // Export for testing.
 const (
-	ExportedBuildEdge   = BuildEdge
-	ExportedRunEdge     = RunEdge
-	MaxOutputSize       = maxOutputSize
-	MaxBuildRetries     = maxBuildRetries
-	WsBuildStdoutExport = WsBuildStdout
-	WsBuildStderrExport = WsBuildStderr
-	WsRunStdoutExport   = WsRunStdout
-	WsRunStderrExport   = WsRunStderr
+	ExportedBuildEdge    = BuildEdge
+	ExportedRunEdge      = RunEdge
+	MaxOutputSize        = maxOutputSize
+	MaxBuildRetries      = maxBuildRetries
+	WsBuildStdoutExport  = WsBuildStdout
+	WsBuildStderrExport  = WsBuildStderr
+	WsBuildStdioExport   = WsBuildStdio
+	WsBuildControlExport = WsBuildControl
+	WsRunStdoutExport    = WsRunStdout
+	WsRunStderrExport    = WsRunStderr
+	WsRunStdioExport     = WsRunStdio
+	WsRunControlExport   = WsRunControl
 	ConnectTimeoutExport = connectTimeout
 )
 
@@ -130,8 +134,8 @@ func (m *BuildTestManager) RunCleanupForTest(task *state.Task) error {
 
 // RegisterExecutionForTest creates and registers a buildTestExecution for
 // testing, returning the execution object.
-func (m *BuildTestManager) RegisterExecutionForTest(taskID, taskKind string, wsIDs []string) *buildTestExecution {
-	return m.registerExecution(taskID, taskKind, wsIDs)
+func (m *BuildTestManager) RegisterExecutionForTest(taskID, taskKind string, wsIDs []string, interactive, terminal bool) *buildTestExecution {
+	return m.registerExecution(taskID, taskKind, wsIDs, interactive, terminal)
 }
 
 // UnregisterExecutionForTest removes the execution for the given task ID.
@@ -160,3 +164,6 @@ func (e *buildTestExecution) GetWebsocketForTest(key string) *websocket.Conn {
 func (e *buildTestExecution) IOConnectedForTest() chan struct{} {
 	return e.ioConnected
 }
+
+// BuildTestSetupForTest exports the buildTestSetup type for testing.
+type BuildTestSetupForTest = buildTestSetup

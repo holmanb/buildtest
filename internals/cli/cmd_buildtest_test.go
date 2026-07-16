@@ -37,6 +37,15 @@ func (s *PebbleSuite) TestBuildTestMissingPath(c *C) {
 	c.Check(err, ErrorMatches, `.*required argument.*`)
 }
 
+func (s *PebbleSuite) TestBuildTestDebugFlag(c *C) {
+	// Test that the --debug flag is recognized by the parser.
+	// We verify this by parsing with --debug and a valid source path,
+	// but with extra args to avoid actual execution.
+	_, err := cli.ParserForTest().ParseArgs([]string{"build-test", "--debug", "/some/path", "extra"})
+	// Should fail with ErrExtraArgs, which means --debug was accepted.
+	c.Assert(err, Equals, cli.ErrExtraArgs)
+}
+
 func (s *PebbleSuite) TestBuildTestSuccess(c *C) {
 	srcDir := c.MkDir()
 	err := os.WriteFile(filepath.Join(srcDir, "hello.txt"), []byte("hello"), 0o644)

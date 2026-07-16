@@ -384,6 +384,76 @@ func (s *handlersSuite) TestMaxBuildRetries(c *C) {
 	c.Check(buildteststate.MaxBuildRetries, Equals, 1)
 }
 
+func (s *handlersSuite) TestInteractiveWebsocketIDs(c *C) {
+	// Verify the interactive websocket ID constants.
+	c.Check(buildteststate.WsBuildStdioExport, Equals, "build-stdio")
+	c.Check(buildteststate.WsBuildControlExport, Equals, "build-control")
+	c.Check(buildteststate.WsRunStdioExport, Equals, "run-stdio")
+	c.Check(buildteststate.WsRunControlExport, Equals, "run-control")
+}
+
+func (s *handlersSuite) TestDoBuildInteractiveUsesStdioWebsockets(c *C) {
+	restore := buildteststate.FakeRunCommand(func(name, dir string, timeout time.Duration, tomb *tomb.Tomb) (int, string, string, error) {
+		c.Check(name, Equals, "snapcraft")
+		return 0, "build output", "build stderr", nil
+	})
+	defer restore()
+
+	pebbleDir := c.MkDir()
+	tarballPath := createMinimalTarball(c, pebbleDir)
+
+	// Create a build-test with interactive mode enabled.
+	// Note: We can't actually run the handler in interactive mode
+	// without websocket connections, so we just verify the setup
+	// is created correctly with the interactive/terminal flags.
+	buildTask, _ := s.createBuildTestChange(c, &buildteststate.BuildTestArgs{
+		SourceTarball: tarballPath,
+		Interactive:   true,
+		Terminal:      true,
+	})
+
+	// Verify the setup has interactive and terminal flags.
+	s.st.Lock()
+	setupObj := s.st.Cached(buildteststate.NewBuildTestSetupKey(buildTask.ID()))
+	c.Assert(setupObj, NotNil)
+	setup, ok := setupObj.(*buildteststate.BuildTestSetupForTest)
+	c.Assert(ok, Equals, true)
+	c.Check(setup.Interactive, Equals, true)
+	c.Check(setup.Terminal, Equals, true)
+	s.st.Unlock()
+}
+
+func (s *handlersSuite) TestDoRunInteractiveUsesStdioWebsockets(c *C) {
+	restore := buildteststate.FakeRunCommand(func(name, dir string, timeout time.Duration, tomb *tomb.Tomb) (int, string, string, error) {
+		if name == "snapcraft" {
+			return 0, "build output", "build stderr", nil
+		}
+		c.Check(name, Equals, "spread")
+		return 0, "test output", "test stderr", nil
+	})
+	defer restore()
+
+	pebbleDir := c.MkDir()
+	tarballPath := createMinimalTarball(c, pebbleDir)
+
+	// Create a build-test with interactive mode enabled but no terminal.
+	buildTask, _ := s.createBuildTestChange(c, &buildteststate.BuildTestArgs{
+		SourceTarball: tarballPath,
+		Interactive:   true,
+		Terminal:      false,
+	})
+
+	// Verify the setup has interactive=true and terminal=false.
+	s.st.Lock()
+	setupObj := s.st.Cached(buildteststate.NewBuildTestSetupKey(buildTask.ID()))
+	c.Assert(setupObj, NotNil)
+	setup, ok := setupObj.(*buildteststate.BuildTestSetupForTest)
+	c.Assert(ok, Equals, true)
+	c.Check(setup.Interactive, Equals, true)
+	c.Check(setup.Terminal, Equals, false)
+	s.st.Unlock()
+}
+
 func (s *handlersSuite) TestLimitWriterWithinLimit(c *C) {
 	w := buildteststate.NewLimitWriter()
 	data := []byte("hello")

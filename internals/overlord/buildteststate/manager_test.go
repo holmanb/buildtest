@@ -108,7 +108,7 @@ func (s *managerSuite) TestRegisterExecution(c *C) {
 
 	// Register an execution for a build task.
 	wsIDs := []string{buildteststate.WsBuildStdoutExport, buildteststate.WsBuildStderrExport}
-	e := mgr.RegisterExecutionForTest("task-1", buildteststate.BuildTaskKind, wsIDs)
+	e := mgr.RegisterExecutionForTest("task-1", buildteststate.BuildTaskKind, wsIDs, false, false)
 	c.Assert(e, NotNil)
 
 	// Verify it can be retrieved.
@@ -128,7 +128,7 @@ func (s *managerSuite) TestUnregisterExecution(c *C) {
 	mgr := buildteststate.NewManager(pebbleDir, runner)
 
 	wsIDs := []string{buildteststate.WsBuildStdoutExport, buildteststate.WsBuildStderrExport}
-	mgr.RegisterExecutionForTest("task-1", buildteststate.BuildTaskKind, wsIDs)
+	mgr.RegisterExecutionForTest("task-1", buildteststate.BuildTaskKind, wsIDs, false, false)
 
 	// Verify it exists.
 	got := mgr.GetExecutionForTest("task-1")
@@ -149,7 +149,7 @@ func (s *managerSuite) TestWaitIOConnectedTimeout(c *C) {
 	mgr := buildteststate.NewManager(pebbleDir, runner)
 
 	wsIDs := []string{buildteststate.WsBuildStdoutExport, buildteststate.WsBuildStderrExport}
-	e := mgr.RegisterExecutionForTest("task-1", buildteststate.BuildTaskKind, wsIDs)
+	e := mgr.RegisterExecutionForTest("task-1", buildteststate.BuildTaskKind, wsIDs, false, false)
 
 	// WaitIOConnected should time out since no websockets are connected.
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -165,7 +165,7 @@ func (s *managerSuite) TestWaitIOConnectedSuccess(c *C) {
 	mgr := buildteststate.NewManager(pebbleDir, runner)
 
 	wsIDs := []string{buildteststate.WsBuildStdoutExport, buildteststate.WsBuildStderrExport}
-	e := mgr.RegisterExecutionForTest("task-1", buildteststate.BuildTaskKind, wsIDs)
+	e := mgr.RegisterExecutionForTest("task-1", buildteststate.BuildTaskKind, wsIDs, false, false)
 
 	// Close the ioConnected channel to simulate all websockets connected.
 	ch := e.IOConnectedForTest()
@@ -182,6 +182,51 @@ func (s *managerSuite) TestWebsocketConstants(c *C) {
 	c.Check(buildteststate.WsBuildStderrExport, Equals, "build-stderr")
 	c.Check(buildteststate.WsRunStdoutExport, Equals, "run-stdout")
 	c.Check(buildteststate.WsRunStderrExport, Equals, "run-stderr")
+}
+
+func (s *managerSuite) TestInteractiveWebsocketConstants(c *C) {
+	c.Check(buildteststate.WsBuildStdioExport, Equals, "build-stdio")
+	c.Check(buildteststate.WsBuildControlExport, Equals, "build-control")
+	c.Check(buildteststate.WsRunStdioExport, Equals, "run-stdio")
+	c.Check(buildteststate.WsRunControlExport, Equals, "run-control")
+}
+
+func (s *managerSuite) TestRegisterExecutionInteractive(c *C) {
+	st := state.New(nil)
+	runner := state.NewTaskRunner(st)
+	pebbleDir := c.MkDir()
+	mgr := buildteststate.NewManager(pebbleDir, runner)
+
+	// Register an execution with interactive mode.
+	wsIDs := []string{buildteststate.WsBuildStdioExport, buildteststate.WsBuildControlExport}
+	e := mgr.RegisterExecutionForTest("task-1", buildteststate.BuildTaskKind, wsIDs, true, true)
+	c.Assert(e, NotNil)
+
+	// Verify it can be retrieved.
+	got := mgr.GetExecutionForTest("task-1")
+	c.Assert(got, NotNil)
+	c.Check(got, Equals, e)
+
+	// Verify the websocket IDs are populated.
+	ch := e.IOConnectedForTest()
+	c.Check(ch, NotNil)
+}
+
+func (s *managerSuite) TestRegisterExecutionNonInteractive(c *C) {
+	st := state.New(nil)
+	runner := state.NewTaskRunner(st)
+	pebbleDir := c.MkDir()
+	mgr := buildteststate.NewManager(pebbleDir, runner)
+
+	// Register an execution without interactive mode (default).
+	wsIDs := []string{buildteststate.WsBuildStdoutExport, buildteststate.WsBuildStderrExport}
+	e := mgr.RegisterExecutionForTest("task-1", buildteststate.BuildTaskKind, wsIDs, false, false)
+	c.Assert(e, NotNil)
+
+	// Verify it can be retrieved.
+	got := mgr.GetExecutionForTest("task-1")
+	c.Assert(got, NotNil)
+	c.Check(got, Equals, e)
 }
 
 func (s *managerSuite) TestConnectTimeout(c *C) {
