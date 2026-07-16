@@ -85,92 +85,7 @@ func (cmd *cmdBuildTest) Execute(args []string) error {
 	}
 
 	if cmd.Debug {
-		// Debug mode implies streaming and interactive.
-		opts.Stdout = Stdout
-		opts.Stderr = Stderr
-		opts.Stdin = Stdin
-		opts.Interactive = true
-		opts.Terminal = true
-
-		// Detect if stdin/stdout are TTYs.
-		stdoutIsTerminal := ptyutil.IsTerminal(unix.Stdout)
-		stdinIsTerminal := ptyutil.IsTerminal(unix.Stdin)
-
-		// Set terminal to raw mode if we have a TTY.
-		var oldState *ptyutil.State
-		if stdoutIsTerminal && stdinIsTerminal {
-			var rawErr error
-			oldState, rawErr = ptyutil.MakeRaw(unix.Stdin)
-			if rawErr != nil {
-				return fmt.Errorf("cannot change terminal to raw mode: %v", rawErr)
-			}
-		}
-
-		// Start the interactive build-test process.
-		process, err := cmd.client.BuildTestInteractive(opts)
-		if err != nil {
-			if oldState != nil {
-				ptyutil.Restore(unix.Stdin, oldState)
-			}
-			return err
-		}
-
-		// Start the control goroutine to handle signals and window resizing.
-		stopControl := make(chan struct{})
-		defer close(stopControl)
-		sighup := make(chan struct{})
-		go buildTestControlHandler(process, stdoutIsTerminal, stopControl, sighup)
-
-		// Wait for the process to finish or SIGHUP.
-		var result *client.BuildTestResult
-		select {
-		case waitErr := <-func() chan error {
-			ch := make(chan error, 1)
-			go func() {
-				r, err := process.Wait()
-				if err != nil {
-					ch <- err
-					return
-				}
-				result = r
-				ch <- nil
-			}()
-			return ch
-		}():
-			if waitErr != nil {
-				if oldState != nil {
-					ptyutil.Restore(unix.Stdin, oldState)
-				}
-				return waitErr
-			}
-		case <-sighup:
-			if oldState != nil {
-				ptyutil.Restore(unix.Stdin, oldState)
-			}
-			fmt.Fprintf(os.Stderr, "SIGHUP received, exiting\n")
-			return nil
-		}
-
-		// Restore terminal BEFORE printing exit codes, so output is
-		// properly formatted and flushed.
-		if oldState != nil {
-			ptyutil.Restore(unix.Stdin, oldState)
-		}
-
-		// Print exit codes.
-		fmt.Fprintf(Stdout, "\nBUILD exit code: %d\n", result.Build.ExitCode)
-		if result.Run != nil {
-			fmt.Fprintf(Stdout, "RUN exit code: %d\n", result.Run.ExitCode)
-		}
-
-		// Return exit code from the run step if present, otherwise from build.
-		if result.Run != nil && result.Run.ExitCode != 0 {
-			panic(&exitStatus{result.Run.ExitCode})
-		}
-		if result.Build.ExitCode != 0 {
-			panic(&exitStatus{result.Build.ExitCode})
-		}
-		return nil
+		return cmd.executeDebug()
 	}
 
 	if cmd.Stream {
@@ -217,6 +132,99 @@ func (cmd *cmdBuildTest) Execute(args []string) error {
 		panic(&exitStatus{result.Build.ExitCode})
 	}
 
+	return nil
+}
+
+// executeDebug handles the --debug flag, which enables interactive mode
+// with PTY allocation, stdin forwarding, and signal handling.
+func (cmd *cmdBuildTest) executeDebug() error {
+	opts := &client.BuildTestOptions{
+		SourcePath:  cmd.Positional.SourcePath,
+		Timeout:     cmd.Timeout,
+		Stdout:      Stdout,
+		Stderr:      Stderr,
+		Stdin:       Stdin,
+		Interactive: true,
+		Terminal:    true,
+	}
+
+	// Detect if stdin/stdout are TTYs.
+	stdoutIsTerminal := ptyutil.IsTerminal(unix.Stdout)
+	stdinIsTerminal := ptyutil.IsTerminal(unix.Stdin)
+
+	// Grab current terminal dimensions.
+	if stdoutIsTerminal {
+		width, height, err := ptyutil.GetSize(unix.Stdout)
+		if err != nil {
+			logger.Debugf("Cannot get terminal size: %v", err)
+		} else {
+			opts.Width = width
+			opts.Height = height
+		}
+	}
+
+	// Record terminal state (and restore it before we exit).
+	var oldState *ptyutil.State
+	if stdoutIsTerminal && stdinIsTerminal {
+		var rawErr error
+		oldState, rawErr = ptyutil.MakeRaw(unix.Stdin)
+		if rawErr != nil {
+			return fmt.Errorf("cannot change terminal to raw mode: %v", rawErr)
+		}
+		defer ptyutil.Restore(unix.Stdin, oldState)
+	}
+
+	// Start the interactive build-test process.
+	process, err := cmd.client.BuildTestInteractive(opts)
+	if err != nil {
+		return err
+	}
+
+	// Start the control goroutine to handle signals and window resizing.
+	stopControl := make(chan struct{})
+	defer close(stopControl)
+	sighup := make(chan struct{})
+	go buildTestControlHandler(process, stdoutIsTerminal, stopControl, sighup)
+
+	// Wait for the process to finish or SIGHUP.
+	var result *client.BuildTestResult
+	select {
+	case waitErr := <-func() chan error {
+		ch := make(chan error, 1)
+		go func() {
+			r, err := process.Wait()
+			if err != nil {
+				ch <- err
+				return
+			}
+			result = r
+			ch <- nil
+		}()
+		return ch
+	}():
+		if waitErr != nil {
+			return waitErr
+		}
+	case <-sighup:
+		// The \r is because we might be in raw mode, and it moves the cursor
+		// back to the start of the line.
+		fmt.Fprintf(os.Stderr, "SIGHUP received, exiting\r\n")
+		return nil
+	}
+
+	// Print exit codes (terminal is already restored by defer).
+	fmt.Fprintf(Stdout, "\nBUILD exit code: %d\n", result.Build.ExitCode)
+	if result.Run != nil {
+		fmt.Fprintf(Stdout, "RUN exit code: %d\n", result.Run.ExitCode)
+	}
+
+	// Return exit code from the run step if present, otherwise from build.
+	if result.Run != nil && result.Run.ExitCode != 0 {
+		panic(&exitStatus{result.Run.ExitCode})
+	}
+	if result.Build.ExitCode != 0 {
+		panic(&exitStatus{result.Build.ExitCode})
+	}
 	return nil
 }
 

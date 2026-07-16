@@ -46,6 +46,10 @@ type BuildTestArgs struct {
 	// Terminal allocates a pseudo-terminal for the build/run processes.
 	// Typically set to true when Interactive is true.
 	Terminal bool
+	// Width is the initial terminal width (columns) for the PTY.
+	Width int
+	// Height is the initial terminal height (rows) for the PTY.
+	Height int
 }
 
 // buildTestSetup is stored in the state cache to specify the args for a build-test.
@@ -55,6 +59,8 @@ type buildTestSetup struct {
 	RetryCount    int
 	Interactive   bool
 	Terminal      bool
+	Width         int
+	Height        int
 }
 
 // buildTestSetupKey is used as a cache key for the build-test setup.
@@ -76,6 +82,8 @@ func BuildTest(st *state.State, args *BuildTestArgs) (*state.TaskSet, error) {
 		Timeout:       args.Timeout,
 		Interactive:   args.Interactive,
 		Terminal:      args.Terminal,
+		Width:         args.Width,
+		Height:        args.Height,
 	}
 	st.Cache(buildTestSetupKey{buildTask.ID()}, setup)
 

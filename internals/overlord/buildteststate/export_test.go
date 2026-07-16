@@ -134,8 +134,8 @@ func (m *BuildTestManager) RunCleanupForTest(task *state.Task) error {
 
 // RegisterExecutionForTest creates and registers a buildTestExecution for
 // testing, returning the execution object.
-func (m *BuildTestManager) RegisterExecutionForTest(taskID, taskKind string, wsIDs []string, interactive, terminal bool) *buildTestExecution {
-	return m.registerExecution(taskID, taskKind, wsIDs, interactive, terminal)
+func (m *BuildTestManager) RegisterExecutionForTest(taskID, taskKind string, wsIDs []string, interactive, terminal bool, width, height int) *buildTestExecution {
+	return m.registerExecution(taskID, taskKind, wsIDs, interactive, terminal, width, height)
 }
 
 // UnregisterExecutionForTest removes the execution for the given task ID.

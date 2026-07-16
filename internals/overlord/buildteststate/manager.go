@@ -68,6 +68,8 @@ type buildTestExecution struct {
 
 	interactive      bool // whether interactive mode is enabled
 	terminal         bool // whether a PTY should be allocated
+	width            int  // initial terminal width (columns)
+	height           int  // initial terminal height (rows)
 	websockets       map[string]*websocket.Conn
 	websocketsLock   sync.Mutex
 	ioConnected      chan struct{}
@@ -123,11 +125,13 @@ func (m *BuildTestManager) tempDir(changeID string) string {
 
 // registerExecution creates a buildTestExecution for the given task and
 // registers it on the manager so that Connect can find it.
-func (m *BuildTestManager) registerExecution(taskID, taskKind string, wsIDs []string, interactive, terminal bool) *buildTestExecution {
+func (m *BuildTestManager) registerExecution(taskID, taskKind string, wsIDs []string, interactive, terminal bool, width, height int) *buildTestExecution {
 	e := &buildTestExecution{
 		taskKind:         taskKind,
 		interactive:      interactive,
 		terminal:         terminal,
+		width:            width,
+		height:           height,
 		websockets:       make(map[string]*websocket.Conn),
 		ioConnected:      make(chan struct{}),
 		controlConnected: make(chan struct{}),
@@ -289,23 +293,6 @@ func (e *buildTestExecution) waitIOConnected(ctx context.Context, taskID string)
 		}
 		return ctx.Err()
 	case <-e.ioConnected:
-		return nil
-	}
-}
-
-// waitControlConnected waits till the control websocket is connected or the
-// connect timeout elapses (or the provided ctx is cancelled).
-func (e *buildTestExecution) waitControlConnected(ctx context.Context, taskID string) error {
-	ctx, cancel := context.WithTimeout(ctx, connectTimeout)
-	defer cancel()
-	select {
-	case <-ctx.Done():
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			logger.Noticef("Build-test %s: timeout waiting for control websocket connection", taskID)
-			return fmt.Errorf("build-test %s: timeout waiting for control websocket connection: %w", taskID, ctx.Err())
-		}
-		return ctx.Err()
-	case <-e.controlConnected:
 		return nil
 	}
 }

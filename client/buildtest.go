@@ -66,6 +66,14 @@ type BuildTestOptions struct {
 	// Terminal allocates a pseudo-terminal for the build/run processes.
 	// Typically set to true when Interactive is true.
 	Terminal bool
+
+	// Width is the initial terminal width (columns) for the PTY.
+	// Only used when Interactive and Terminal are true.
+	Width int
+
+	// Height is the initial terminal height (rows) for the PTY.
+	// Only used when Interactive and Terminal are true.
+	Height int
 }
 
 // BuildTestResult holds the result of a build-test request.
@@ -94,6 +102,8 @@ type buildTestMetadataPayload struct {
 	Timeout     string `json:"timeout,omitempty"`
 	Interactive bool   `json:"interactive,omitempty"`
 	Terminal    bool   `json:"terminal,omitempty"`
+	Width       int    `json:"width,omitempty"`
+	Height      int    `json:"height,omitempty"`
 }
 
 // BuildTest uploads the source code from SourcePath, builds it with snapcraft,
@@ -127,6 +137,8 @@ func (client *Client) BuildTest(opts *BuildTestOptions) (*BuildTestResult, error
 	if opts.Interactive {
 		metadata.Interactive = true
 		metadata.Terminal = opts.Terminal
+		metadata.Width = opts.Width
+		metadata.Height = opts.Height
 	}
 	if err := json.NewEncoder(part).Encode(&metadata); err != nil {
 		return nil, fmt.Errorf("cannot encode metadata: %w", err)
@@ -252,6 +264,8 @@ func (client *Client) BuildTestInteractive(opts *BuildTestOptions) (*BuildTestPr
 	}
 	metadata.Interactive = true
 	metadata.Terminal = opts.Terminal
+	metadata.Width = opts.Width
+	metadata.Height = opts.Height
 	if err := json.NewEncoder(part).Encode(&metadata); err != nil {
 		return nil, fmt.Errorf("cannot encode metadata: %w", err)
 	}
@@ -460,7 +474,9 @@ type BuildTestProcess struct {
 	client      *Client
 	timeout     time.Duration
 	writesDone  chan struct{}
-	controlConn jsonWriter
+	controlMu   sync.Mutex
+	controlConn clientWebsocket
+	stdinDone   chan bool // only used by tests
 }
 
 // buildTestCommand represents a command sent over the control websocket.
@@ -481,17 +497,29 @@ type buildTestResizeArgs struct {
 
 // SendSignal sends a signal to the running build or run process.
 func (p *BuildTestProcess) SendSignal(signal string) error {
+	p.controlMu.Lock()
+	conn := p.controlConn
+	p.controlMu.Unlock()
+	if conn == nil {
+		return fmt.Errorf("no control websocket connection")
+	}
 	msg := buildTestCommand{
 		Command: "signal",
 		Signal: &buildTestSignalArgs{
 			Name: signal,
 		},
 	}
-	return p.controlConn.WriteJSON(msg)
+	return conn.WriteJSON(msg)
 }
 
 // SendResize sends a terminal resize message to the running process.
 func (p *BuildTestProcess) SendResize(width, height int) error {
+	p.controlMu.Lock()
+	conn := p.controlConn
+	p.controlMu.Unlock()
+	if conn == nil {
+		return fmt.Errorf("no control websocket connection")
+	}
 	msg := buildTestCommand{
 		Command: "resize",
 		Resize: &buildTestResizeArgs{
@@ -499,7 +527,7 @@ func (p *BuildTestProcess) SendResize(width, height int) error {
 			Height: height,
 		},
 	}
-	return p.controlConn.WriteJSON(msg)
+	return conn.WriteJSON(msg)
 }
 
 // Wait waits for the build-test process to finish and returns the result.
@@ -579,8 +607,15 @@ func (client *Client) buildTestInteractive(changeID string, opts *BuildTestOptio
 
 	// writesDone is closed when ALL I/O (build and run) is complete.
 	writesDone := make(chan struct{})
-	var controlConn jsonWriter
 	var wgIO sync.WaitGroup
+
+	// Create the process early so we can atomically swap control connections.
+	process := &BuildTestProcess{
+		changeID:   changeID,
+		client:     client,
+		timeout:    opts.Timeout,
+		writesDone: writesDone,
+	}
 
 	// Connect to the build task's websockets.
 	if buildTaskID != "" {
@@ -589,7 +624,9 @@ func (client *Client) buildTestInteractive(changeID string, opts *BuildTestOptio
 		if err != nil {
 			return nil, fmt.Errorf("cannot connect to build control websocket: %w", err)
 		}
-		controlConn = buildControlConn
+		process.controlMu.Lock()
+		process.controlConn = buildControlConn
+		process.controlMu.Unlock()
 
 		// Connect to build stdio websocket (bidirectional).
 		buildStdioConn, err := client.getTaskWebsocket(buildTaskID, "build-stdio")
@@ -619,6 +656,9 @@ func (client *Client) buildTestInteractive(changeID string, opts *BuildTestOptio
 		}
 
 		// Track build I/O completion.
+		// Note: we do NOT close buildControlConn here — it stays open
+		// until the run phase's control websocket replaces it, so that
+		// signals sent during the transition are not lost.
 		wgIO.Add(1)
 		go func() {
 			defer wgIO.Done()
@@ -631,7 +671,6 @@ func (client *Client) buildTestInteractive(changeID string, opts *BuildTestOptio
 			if buildStderrConn != nil {
 				_ = buildStderrConn.Close()
 			}
-			_ = buildControlConn.Close()
 		}()
 	}
 
@@ -671,7 +710,16 @@ func (client *Client) buildTestInteractive(changeID string, opts *BuildTestOptio
 			if err != nil {
 				logger.Debugf("Cannot connect to run control websocket: %v", err)
 			} else {
-				controlConn = runControlConn
+				// Atomically swap the control connection from build to run.
+				// Close the old build control after the swap so signals
+				// sent during the transition are not lost.
+				process.controlMu.Lock()
+				oldConn := process.controlConn
+				process.controlConn = runControlConn
+				process.controlMu.Unlock()
+				if oldConn != nil {
+					_ = oldConn.Close()
+				}
 			}
 
 			// Connect to run stdio websocket.
@@ -681,6 +729,7 @@ func (client *Client) buildTestInteractive(changeID string, opts *BuildTestOptio
 			} else {
 				// Forward stdin to the run stdio websocket.
 				runStdinDone := wsutil.WebsocketSendStream(runStdioConn, stdin, -1)
+				process.stdinDone = runStdinDone
 				// Receive stdout from the run stdio websocket.
 				runStdoutDone := wsutil.WebsocketRecvStream(stdout, runStdioConn)
 
@@ -707,8 +756,13 @@ func (client *Client) buildTestInteractive(changeID string, opts *BuildTestOptio
 					if runStderrConn != nil {
 						_ = runStderrConn.Close()
 					}
-					if runControlConn != nil {
-						_ = runControlConn.Close()
+					// Close the run control websocket after I/O is done.
+					process.controlMu.Lock()
+					conn := process.controlConn
+					process.controlConn = nil
+					process.controlMu.Unlock()
+					if conn != nil {
+						_ = conn.Close()
 					}
 				}()
 			}
@@ -721,14 +775,15 @@ func (client *Client) buildTestInteractive(changeID string, opts *BuildTestOptio
 		close(writesDone)
 	}()
 
-	process := &BuildTestProcess{
-		changeID:    changeID,
-		client:      client,
-		timeout:     opts.Timeout,
-		writesDone:  writesDone,
-		controlConn: controlConn,
-	}
 	return process, nil
+}
+
+// WaitStdinDone waits for the stdin forwarding to finish. This is useful
+// for tests to ensure all stdin has been sent before checking results.
+func (p *BuildTestProcess) WaitStdinDone() {
+	if p.stdinDone != nil {
+		<-p.stdinDone
+	}
 }
 
 // taskGetString extracts a string value from a task's data, returning "" if not found.

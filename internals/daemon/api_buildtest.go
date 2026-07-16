@@ -32,6 +32,8 @@ type buildTestMetadata struct {
 	Timeout     string `json:"timeout,omitempty"`
 	Interactive bool   `json:"interactive,omitempty"`
 	Terminal    bool   `json:"terminal,omitempty"`
+	Width       int    `json:"width,omitempty"`
+	Height      int    `json:"height,omitempty"`
 }
 
 func v1PostBuildTest(c *Command, req *http.Request, user *UserState) Response {
@@ -111,6 +113,8 @@ func v1PostBuildTest(c *Command, req *http.Request, user *UserState) Response {
 		Timeout:       timeout,
 		Interactive:   metadata.Interactive,
 		Terminal:      metadata.Terminal,
+		Width:         metadata.Width,
+		Height:        metadata.Height,
 	}
 
 	ts, err := buildteststate.BuildTest(st, args)

@@ -77,7 +77,7 @@ func (m *BuildTestManager) doBuild(task *state.Task, tomb *tomb.Tomb) error {
 	} else {
 		wsIDs = []string{WsBuildStdout, WsBuildStderr}
 	}
-	e := m.registerExecution(task.ID(), buildTaskKind, wsIDs, setup.Interactive, setup.Terminal)
+	e := m.registerExecution(task.ID(), buildTaskKind, wsIDs, setup.Interactive, setup.Terminal, setup.Width, setup.Height)
 	defer m.unregisterExecution(task.ID())
 
 	// Run snapcraft in the temp directory.
@@ -127,7 +127,7 @@ func (m *BuildTestManager) doBuild(task *state.Task, tomb *tomb.Tomb) error {
 		st.Unlock()
 
 		// Re-register execution for websocket streaming on retry.
-		e2 := m.registerExecution(task.ID(), buildTaskKind, wsIDs, setup.Interactive, setup.Terminal)
+		e2 := m.registerExecution(task.ID(), buildTaskKind, wsIDs, setup.Interactive, setup.Terminal, setup.Width, setup.Height)
 		defer m.unregisterExecution(task.ID())
 
 		// Retry the build.
@@ -197,6 +197,7 @@ func (m *BuildTestManager) doRun(task *state.Task, tomb *tomb.Tomb) error {
 	// Determine timeout and interactive settings from the build task's setup.
 	var timeout time.Duration
 	var interactive, terminal bool
+	var width, height int
 	st.Lock()
 	for _, t := range change.Tasks() {
 		if t.Kind() == buildTaskKind {
@@ -205,6 +206,8 @@ func (m *BuildTestManager) doRun(task *state.Task, tomb *tomb.Tomb) error {
 				timeout = setup.Timeout
 				interactive = setup.Interactive
 				terminal = setup.Terminal
+				width = setup.Width
+				height = setup.Height
 			}
 			break
 		}
@@ -218,7 +221,7 @@ func (m *BuildTestManager) doRun(task *state.Task, tomb *tomb.Tomb) error {
 	} else {
 		wsIDs = []string{WsRunStdout, WsRunStderr}
 	}
-	e := m.registerExecution(task.ID(), runTaskKind, wsIDs, interactive, terminal)
+	e := m.registerExecution(task.ID(), runTaskKind, wsIDs, interactive, terminal, width, height)
 	defer m.unregisterExecution(task.ID())
 
 	// Run spread in the temp directory.
@@ -422,8 +425,9 @@ type buildTestResizeArgs struct {
 
 // controlLoop reads commands from the control websocket and handles them
 // (signal forwarding, terminal resize). It's modeled after cmdstate's
-// execution.controlLoop.
-func (e *buildTestExecution) controlLoop(taskID string, pidCh <-chan int, stop <-chan struct{}, ptyFd int) {
+// execution.controlLoop. The controlWsID parameter specifies which
+// websocket ID to use for this phase (e.g., WsBuildControl or WsRunControl).
+func (e *buildTestExecution) controlLoop(taskID string, pidCh <-chan int, stop <-chan struct{}, ptyFd int, controlWsID string) {
 	logger.Debugf("Build-test %s: control handler waiting", taskID)
 	defer logger.Debugf("Build-test %s: control handler finished", taskID)
 
@@ -446,10 +450,7 @@ func (e *buildTestExecution) controlLoop(taskID string, pidCh <-chan int, stop <
 
 	logger.Debugf("Build-test %s: control handler started for PID %d", taskID, pid)
 	for {
-		controlConn := e.getWebsocket(WsBuildControl)
-		if controlConn == nil {
-			controlConn = e.getWebsocket(WsRunControl)
-		}
+		controlConn := e.getWebsocket(controlWsID)
 		if controlConn == nil {
 			logger.Debugf("Build-test %s: no control websocket", taskID)
 			break
@@ -554,21 +555,26 @@ func (m *BuildTestManager) runCommandInteractive(name string, dir string, ctx co
 		beforeClosers = append(beforeClosers, slave)
 
 		// Start the control loop for signal/resize handling.
-		go e.controlLoop(name, pidCh, stopControl, int(master.Fd()))
+		go e.controlLoop(name, pidCh, stopControl, int(master.Fd()), controlWsID)
+
+		// Apply initial terminal size if provided.
+		if e.width > 0 && e.height > 0 {
+			if err := ptyutil.SetSize(int(master.Fd()), e.width, e.height); err != nil {
+				logger.Noticef("Build-test %s: cannot set initial terminal size to %dx%d: %v", name, e.width, e.height, err)
+			} else {
+				logger.Debugf("Build-test %s: set initial terminal size to %dx%d", name, e.width, e.height)
+			}
+		}
 
 		// Mirror PTY output to the stdio websocket and capture to limitWriter.
 		stdioConn := e.getWebsocket(stdioWsID)
 		wgOutputSent.Go(func() {
-			// Use a pipe to capture output from MirrorToWebsocket.
-			// MirrorToWebsocket writes to the websocket directly, so we
-			// need a different approach: read from master via a tee.
-			// We'll use ExecReaderToChannel + manual websocket writing
-			// with a TeeReader for capture.
+			// Use ExecReaderToChannel + manual websocket writing
+			// with capture to limitWriter.
 			in := wsutil.ExecReaderToChannel(master, -1, childDead, int(master.Fd()))
 			for {
 				buf, ok := <-in
 				if !ok {
-					_ = master.Close()
 					// Capture any remaining output.
 					stdoutLimit.Write(buf)
 					// Send write barrier.
@@ -586,7 +592,6 @@ func (m *BuildTestManager) runCommandInteractive(name string, dir string, ctx co
 			}
 			closeMsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
 			stdioConn.WriteMessage(websocket.CloseMessage, closeMsg)
-			master.Close()
 		})
 
 		if e.interactive {
@@ -626,7 +631,7 @@ func (m *BuildTestManager) runCommandInteractive(name string, dir string, ctx co
 		cmd.WaitDelay = time.Second
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			Setsid:  true,
-			Setctty: true,
+			Setctty: e.terminal && e.interactive,
 		}
 
 		err = reaper.StartCommand(cmd)
@@ -680,7 +685,7 @@ func (m *BuildTestManager) runCommandInteractive(name string, dir string, ctx co
 	}
 
 	// Non-PTY interactive mode: use pipes for stdin/stdout/stderr.
-	go e.controlLoop(name, pidCh, stopControl, -1)
+	go e.controlLoop(name, pidCh, stopControl, -1, controlWsID)
 
 	// Stdin: receive from stdio websocket and write to cmd.Stdin pipe.
 	stdioConn := e.getWebsocket(stdioWsID)
