@@ -45,7 +45,7 @@ var API = []*Command{{
 	POST:        v1PostChange,
 }, {
 	Path:       "/v1/changes/{id}/wait",
-	ReadAccess: UserAccess{},
+	ReadAccess: OpenAccess{},
 	GET:        v1GetChangeWait,
 }, {
 	Path:        "/v1/services",
