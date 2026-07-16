@@ -28,6 +28,10 @@ const (
 	// TaskSet edges for identifying build and run tasks.
 	BuildEdge state.TaskSetEdge = "build"
 	RunEdge   state.TaskSetEdge = "run"
+
+	// maxBuildRetries is the maximum number of times a failed snapcraft
+	// build will be retried after running "snapcraft clean".
+	maxBuildRetries = 1
 )
 
 // BuildTestArgs holds the arguments for a build-test request.
@@ -42,6 +46,7 @@ type BuildTestArgs struct {
 type buildTestSetup struct {
 	SourceTarball string
 	Timeout       time.Duration
+	RetryCount    int
 }
 
 // buildTestSetupKey is used as a cache key for the build-test setup.

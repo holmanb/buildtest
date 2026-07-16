@@ -44,6 +44,7 @@ func (s *handlersSuite) SetUpTest(c *C) {
 
 func (s *handlersSuite) TearDownTest(c *C) {
 	buildteststate.FakeRunCommand(nil)
+	buildteststate.FakeCleanCommand(nil)
 }
 
 // createBuildTestChange is a helper that creates a build-test change with
@@ -106,10 +107,17 @@ func (s *handlersSuite) TestDoBuildSuccess(c *C) {
 }
 
 func (s *handlersSuite) TestDoBuildFailure(c *C) {
+	callCount := 0
 	restore := buildteststate.FakeRunCommand(func(name, dir string, timeout time.Duration, tomb *tomb.Tomb) (int, string, string, error) {
+		callCount++
 		return 1, "build output", "build stderr", nil
 	})
 	defer restore()
+
+	cleanRestore := buildteststate.FakeCleanCommand(func(dir string) (string, string, error) {
+		return "clean output", "", nil
+	})
+	defer cleanRestore()
 
 	pebbleDir := c.MkDir()
 	tarballPath := createMinimalTarball(c, pebbleDir)
@@ -119,9 +127,9 @@ func (s *handlersSuite) TestDoBuildFailure(c *C) {
 	})
 
 	err := s.mgr.RunHandlerForTest(buildTask)
-	c.Check(err, ErrorMatches, "snapcraft failed with exit code 1")
+	c.Check(err, ErrorMatches, "snapcraft failed with exit code 1.*retried after clean.*")
 
-	// Verify api-data was still set (even on failure).
+	// Verify api-data was still set (even on failure) with retry info.
 	s.st.Lock()
 	var apiData map[string]any
 	err = buildTask.Get("api-data", &apiData)
@@ -129,7 +137,12 @@ func (s *handlersSuite) TestDoBuildFailure(c *C) {
 	c.Check(apiData["stdout"], Equals, "build output")
 	c.Check(apiData["stderr"], Equals, "build stderr")
 	c.Check(apiData["exit-code"], Equals, float64(1))
+	c.Check(apiData["retried"], Equals, true)
+	c.Check(apiData["original-exit-code"], Equals, float64(1))
 	s.st.Unlock()
+
+	// Verify snapcraft was called twice (initial + retry).
+	c.Check(callCount, Equals, 2)
 }
 
 func (s *handlersSuite) TestDoBuildTimeout(c *C) {
@@ -228,6 +241,147 @@ func (s *handlersSuite) TestDoRunFailure(c *C) {
 	c.Check(apiData["stderr"], Equals, "test stderr")
 	c.Check(apiData["exit-code"], Equals, float64(2))
 	s.st.Unlock()
+}
+
+func (s *handlersSuite) TestDoBuildRetrySuccess(c *C) {
+	// First snapcraft call fails, second succeeds after clean.
+	callCount := 0
+	restore := buildteststate.FakeRunCommand(func(name, dir string, timeout time.Duration, tomb *tomb.Tomb) (int, string, string, error) {
+		callCount++
+		if callCount == 1 {
+			return 1, "first build output", "first build stderr", nil
+		}
+		return 0, "second build output", "second build stderr", nil
+	})
+	defer restore()
+
+	cleanRestore := buildteststate.FakeCleanCommand(func(dir string) (string, string, error) {
+		return "clean output", "clean stderr", nil
+	})
+	defer cleanRestore()
+
+	pebbleDir := c.MkDir()
+	tarballPath := createMinimalTarball(c, pebbleDir)
+
+	buildTask, _ := s.createBuildTestChange(c, &buildteststate.BuildTestArgs{
+		SourceTarball: tarballPath,
+	})
+
+	err := s.mgr.RunHandlerForTest(buildTask)
+	c.Check(err, IsNil)
+
+	// Verify api-data includes retry info.
+	s.st.Lock()
+	var apiData map[string]any
+	err = buildTask.Get("api-data", &apiData)
+	c.Assert(err, IsNil)
+	c.Check(apiData["stdout"], Equals, "second build output")
+	c.Check(apiData["stderr"], Equals, "second build stderr")
+	c.Check(apiData["exit-code"], Equals, float64(0))
+	c.Check(apiData["retried"], Equals, true)
+	c.Check(apiData["original-exit-code"], Equals, float64(1))
+	c.Check(apiData["original-stderr"], Equals, "first build stderr")
+	s.st.Unlock()
+}
+
+func (s *handlersSuite) TestDoBuildRetryExhausted(c *C) {
+	// Both snapcraft calls fail — max retries reached.
+	callCount := 0
+	restore := buildteststate.FakeRunCommand(func(name, dir string, timeout time.Duration, tomb *tomb.Tomb) (int, string, string, error) {
+		callCount++
+		if callCount == 1 {
+			return 1, "first build output", "first build stderr", nil
+		}
+		return 2, "second build output", "second build stderr", nil
+	})
+	defer restore()
+
+	cleanRestore := buildteststate.FakeCleanCommand(func(dir string) (string, string, error) {
+		return "clean output", "clean stderr", nil
+	})
+	defer cleanRestore()
+
+	pebbleDir := c.MkDir()
+	tarballPath := createMinimalTarball(c, pebbleDir)
+
+	buildTask, _ := s.createBuildTestChange(c, &buildteststate.BuildTestArgs{
+		SourceTarball: tarballPath,
+	})
+
+	err := s.mgr.RunHandlerForTest(buildTask)
+	c.Check(err, ErrorMatches, "snapcraft failed with exit code 2.*")
+
+	// Verify api-data includes retry info even on final failure.
+	s.st.Lock()
+	var apiData map[string]any
+	err = buildTask.Get("api-data", &apiData)
+	c.Assert(err, IsNil)
+	c.Check(apiData["stdout"], Equals, "second build output")
+	c.Check(apiData["stderr"], Equals, "second build stderr")
+	c.Check(apiData["exit-code"], Equals, float64(2))
+	c.Check(apiData["retried"], Equals, true)
+	c.Check(apiData["original-exit-code"], Equals, float64(1))
+	s.st.Unlock()
+}
+
+func (s *handlersSuite) TestDoBuildCleanCommandFailure(c *C) {
+	// Clean command fails, but retry still attempted and succeeds.
+	callCount := 0
+	restore := buildteststate.FakeRunCommand(func(name, dir string, timeout time.Duration, tomb *tomb.Tomb) (int, string, string, error) {
+		callCount++
+		if callCount == 1 {
+			return 1, "first build output", "first build stderr", nil
+		}
+		return 0, "second build output", "second build stderr", nil
+	})
+	defer restore()
+
+	cleanRestore := buildteststate.FakeCleanCommand(func(dir string) (string, string, error) {
+		return "", "clean error", fmt.Errorf("clean failed")
+	})
+	defer cleanRestore()
+
+	pebbleDir := c.MkDir()
+	tarballPath := createMinimalTarball(c, pebbleDir)
+
+	buildTask, _ := s.createBuildTestChange(c, &buildteststate.BuildTestArgs{
+		SourceTarball: tarballPath,
+	})
+
+	err := s.mgr.RunHandlerForTest(buildTask)
+	c.Check(err, IsNil)
+
+	// Verify the retry succeeded despite clean failure.
+	s.st.Lock()
+	var apiData map[string]any
+	err = buildTask.Get("api-data", &apiData)
+	c.Assert(err, IsNil)
+	c.Check(apiData["retried"], Equals, true)
+	c.Check(apiData["exit-code"], Equals, float64(0))
+	s.st.Unlock()
+}
+
+func (s *handlersSuite) TestDoBuildNoRetryOnRunCommandError(c *C) {
+	// If runCommandStreaming itself returns an error (not just non-zero exit),
+	// we don't retry — it's an infrastructure error.
+	restore := buildteststate.FakeRunCommand(func(name, dir string, timeout time.Duration, tomb *tomb.Tomb) (int, string, string, error) {
+		return -1, "", "", fmt.Errorf("cannot start snapcraft: executable not found")
+	})
+	defer restore()
+
+	pebbleDir := c.MkDir()
+	tarballPath := createMinimalTarball(c, pebbleDir)
+
+	buildTask, _ := s.createBuildTestChange(c, &buildteststate.BuildTestArgs{
+		SourceTarball: tarballPath,
+	})
+
+	err := s.mgr.RunHandlerForTest(buildTask)
+	c.Check(err, ErrorMatches, "cannot run snapcraft:.*")
+}
+
+func (s *handlersSuite) TestMaxBuildRetries(c *C) {
+	c.Check(buildteststate.MaxBuildRetries, Equals, 1)
 }
 
 func (s *handlersSuite) TestLimitWriterWithinLimit(c *C) {

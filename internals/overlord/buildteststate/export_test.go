@@ -35,9 +35,10 @@ var (
 
 // Export for testing.
 const (
-	ExportedBuildEdge  = BuildEdge
-	ExportedRunEdge    = RunEdge
-	MaxOutputSize      = maxOutputSize
+	ExportedBuildEdge   = BuildEdge
+	ExportedRunEdge     = RunEdge
+	MaxOutputSize       = maxOutputSize
+	MaxBuildRetries     = maxBuildRetries
 	WsBuildStdoutExport = WsBuildStdout
 	WsBuildStderrExport = WsBuildStderr
 	WsRunStdoutExport   = WsRunStdout
@@ -62,6 +63,14 @@ func FakeRunCommand(f func(name string, dir string, timeout time.Duration, tomb 
 	old := fakeRunCommand
 	fakeRunCommand = f
 	return func() { fakeRunCommand = old }
+}
+
+// FakeCleanCommand sets a mock for the clean command function and returns a
+// restore function to reset it.
+func FakeCleanCommand(f func(dir string) (stdout string, stderr string, err error)) (restore func()) {
+	old := fakeCleanCommand
+	fakeCleanCommand = f
+	return func() { fakeCleanCommand = old }
 }
 
 // ExtractTarball exports the extractTarball function for testing.

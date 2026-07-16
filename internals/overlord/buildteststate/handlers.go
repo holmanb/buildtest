@@ -80,6 +80,57 @@ func (m *BuildTestManager) doBuild(task *state.Task, tomb *tomb.Tomb) error {
 		return fmt.Errorf("cannot run snapcraft: %w", err)
 	}
 
+	// If the build failed, try cleaning and retrying once.
+	if exitCode != 0 && setup.RetryCount < maxBuildRetries {
+		logger.Noticef("Snapcraft build failed (exit code %d), retrying with clean (attempt %d/%d)",
+			exitCode, setup.RetryCount+1, maxBuildRetries)
+
+		originalExitCode := exitCode
+		originalStderr := stderr
+
+		// Run snapcraft clean before retrying.
+		cleanStdout, cleanStderr, cleanErr := m.runCleanCommand(tempDir, timeout)
+		if cleanErr != nil {
+			logger.Noticef("Snapcraft clean failed: %v (stdout: %s, stderr: %s), proceeding with retry anyway",
+				cleanErr, cleanStdout, cleanStderr)
+		}
+
+		// Update retry count in state cache.
+		st.Lock()
+		setup.RetryCount++
+		st.Cache(buildTestSetupKey{task.ID()}, setup)
+		st.Unlock()
+
+		// Re-register execution for websocket streaming on retry.
+		e2 := m.registerExecution(task.ID(), buildTaskKind, wsIDs)
+		defer m.unregisterExecution(task.ID())
+
+		// Retry the build.
+		exitCode, stdout, stderr, err = m.runCommandStreaming("snapcraft", tempDir, timeout, tomb, e2, WsBuildStdout, WsBuildStderr)
+		if err != nil {
+			return fmt.Errorf("cannot run snapcraft: %w", err)
+		}
+
+		// Store the results in the task's api-data, including retry info.
+		st.Lock()
+		task.Set("api-data", map[string]any{
+			"stdout":             stdout,
+			"stderr":             stderr,
+			"exit-code":          exitCode,
+			"retried":            true,
+			"original-exit-code": originalExitCode,
+			"original-stderr":    truncateString(originalStderr, 1024),
+		})
+		st.Unlock()
+
+		if exitCode != 0 {
+			return fmt.Errorf("snapcraft failed with exit code %d (retried after clean, original exit code %d)",
+				exitCode, originalExitCode)
+		}
+
+		return nil
+	}
+
 	// Store the results in the task's api-data.
 	st.Lock()
 	task.Set("api-data", map[string]any{
@@ -266,8 +317,9 @@ func (m *BuildTestManager) runCommandPiped(name string, dir string, ctx context.
 
 // runCommandBuffered runs a command with buffered capture (no streaming).
 // This is the fallback when no websocket connections are available.
-func runCommandBuffered(name string, dir string, ctx context.Context) (exitCode int, stdout string, stderr string, err error) {
-	cmd := exec.CommandContext(ctx, name)
+// If extraArgs are provided, they are appended to the command arguments.
+func runCommandBuffered(name string, dir string, ctx context.Context, extraArgs ...string) (exitCode int, stdout string, stderr string, err error) {
+	cmd := exec.CommandContext(ctx, name, extraArgs...)
 	cmd.Dir = dir
 	cmd.WaitDelay = time.Second
 
@@ -318,4 +370,49 @@ func (w *limitWriter) Write(p []byte) (n int, err error) {
 
 func (w *limitWriter) String() string {
 	return string(w.buf)
+}
+
+// runCleanCommand runs "snapcraft clean" in the given directory. It uses
+// buffered capture (no streaming) since clean is typically fast. The timeout
+// is capped at 30 seconds or 10% of the build timeout, whichever is smaller,
+// to avoid hanging on the clean step.
+func (m *BuildTestManager) runCleanCommand(dir string, buildTimeout time.Duration) (stdout string, stderr string, err error) {
+	if fakeCleanCommand != nil {
+		return fakeCleanCommand(dir)
+	}
+
+	cleanTimeout := 30 * time.Second
+	if buildTimeout > 0 {
+		tenth := buildTimeout / 10
+		if tenth < cleanTimeout {
+			cleanTimeout = tenth
+		}
+		// Ensure at least 5 seconds for clean.
+		if cleanTimeout < 5*time.Second {
+			cleanTimeout = 5 * time.Second
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), cleanTimeout)
+	defer cancel()
+
+	exitCode, stdout, stderr, err := runCommandBuffered("snapcraft", dir, ctx, "clean")
+	if err != nil {
+		return stdout, stderr, err
+	}
+	if exitCode != 0 {
+		return stdout, stderr, fmt.Errorf("snapcraft clean failed with exit code %d", exitCode)
+	}
+	return stdout, stderr, nil
+}
+
+// fakeCleanCommand is used for testing to mock out the clean command execution.
+var fakeCleanCommand func(dir string) (stdout string, stderr string, err error)
+
+// truncateString truncates s to at most maxLen bytes, appending "..." if truncated.
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }

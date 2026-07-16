@@ -92,7 +92,11 @@ func (cmd *cmdBuildTest) Execute(args []string) error {
 		}
 	} else {
 		// Print the results.
-		fmt.Fprintf(Stdout, "BUILD\n")
+		if result.Build.Retried {
+			fmt.Fprintf(Stdout, "BUILD (retried after clean)\n")
+		} else {
+			fmt.Fprintf(Stdout, "BUILD\n")
+		}
 		fmt.Fprintf(Stdout, "  Exit code: %d\n", result.Build.ExitCode)
 		printOutput("Stdout", result.Build.Stdout)
 		printOutput("Stderr", result.Build.Stderr)

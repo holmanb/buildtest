@@ -60,9 +60,11 @@ type BuildTestResult struct {
 
 // BuildResult holds the result of the build step.
 type BuildResult struct {
-	Stdout   string `json:"stdout" yaml:"stdout"`
-	Stderr   string `json:"stderr" yaml:"stderr"`
-	ExitCode int    `json:"exit-code" yaml:"exit-code"`
+	Stdout           string `json:"stdout" yaml:"stdout"`
+	Stderr           string `json:"stderr" yaml:"stderr"`
+	ExitCode         int    `json:"exit-code" yaml:"exit-code"`
+	Retried          bool   `json:"retried,omitempty" yaml:"retried,omitempty"`
+	OriginalExitCode int    `json:"original-exit-code,omitempty" yaml:"original-exit-code,omitempty"`
 }
 
 // RunResult holds the result of the test run step.
@@ -167,9 +169,11 @@ func (client *Client) BuildTest(opts *BuildTestOptions) (*BuildTestResult, error
 		switch task.Kind {
 		case "build-test-build":
 			result.Build = BuildResult{
-				Stdout:   taskGetString(task, "stdout"),
-				Stderr:   taskGetString(task, "stderr"),
-				ExitCode: taskGetInt(task, "exit-code"),
+				Stdout:           taskGetString(task, "stdout"),
+				Stderr:           taskGetString(task, "stderr"),
+				ExitCode:         taskGetInt(task, "exit-code"),
+				Retried:          taskGetBool(task, "retried"),
+				OriginalExitCode: taskGetInt(task, "original-exit-code"),
 			}
 		case "build-test-run":
 			result.Run = &RunResult{
@@ -309,7 +313,9 @@ func (client *Client) buildTestStreaming(changeID string, opts *BuildTestOptions
 		switch task.Kind {
 		case "build-test-build":
 			result.Build = BuildResult{
-				ExitCode: taskGetInt(task, "exit-code"),
+				ExitCode:         taskGetInt(task, "exit-code"),
+				Retried:          taskGetBool(task, "retried"),
+				OriginalExitCode: taskGetInt(task, "original-exit-code"),
 			}
 		case "build-test-run":
 			result.Run = &RunResult{
@@ -366,6 +372,15 @@ func taskGetInt(task *Task, key string) int {
 		return 0
 	}
 	return n
+}
+
+// taskGetBool extracts a bool value from a task's data, returning false if not found.
+func taskGetBool(task *Task, key string) bool {
+	var b bool
+	if err := task.Get(key, &b); err != nil {
+		return false
+	}
+	return b
 }
 
 // createSourceTarball creates a gzipped tar archive of the given directory
