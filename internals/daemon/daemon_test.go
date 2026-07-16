@@ -1542,7 +1542,7 @@ func (s *daemonSuite) TestAPIAccessLevels(c *C) {
 
 		{"GET", "/v1/health", ``, -1, http.StatusOK},
 
-		{"GET", "/v1/changes", ``, -1, http.StatusUnauthorized},
+		{"GET", "/v1/changes", ``, -1, http.StatusOK},
 		{"GET", "/v1/changes", ``, 42, http.StatusOK},
 		{"GET", "/v1/changes", ``, 0, http.StatusOK},
 
