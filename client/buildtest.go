@@ -27,10 +27,12 @@ import (
 	"net/textproto"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/canonical/pebble/internals/logger"
 	"github.com/canonical/pebble/internals/wsutil"
+	"github.com/gorilla/websocket"
 )
 
 // BuildTestOptions holds the options for a build-test request.
@@ -575,10 +577,12 @@ func (client *Client) buildTestInteractive(changeID string, opts *BuildTestOptio
 		stdout = io.Discard
 	}
 
-	// Connect to the build task's websockets.
-	var writesDone chan struct{}
+	// writesDone is closed when ALL I/O (build and run) is complete.
+	writesDone := make(chan struct{})
 	var controlConn jsonWriter
+	var wgIO sync.WaitGroup
 
+	// Connect to the build task's websockets.
 	if buildTaskID != "" {
 		// Connect to build control websocket.
 		buildControlConn, err := client.getTaskWebsocket(buildTaskID, "build-control")
@@ -593,8 +597,13 @@ func (client *Client) buildTestInteractive(changeID string, opts *BuildTestOptio
 			return nil, fmt.Errorf("cannot connect to build stdio websocket: %w", err)
 		}
 
-		// Forward stdin to the stdio websocket.
-		stdinDone := wsutil.WebsocketSendStream(buildStdioConn, stdin, -1)
+		// Don't forward stdin to the build phase — snapcraft doesn't need
+		// interactive input. Send an "end" command to signal no stdin.
+		buildStdinDone := make(chan bool, 1)
+		go func() {
+			buildStdioConn.WriteMessage(websocket.TextMessage, []byte(`{"command":"end"}`))
+			close(buildStdinDone)
+		}()
 
 		// Receive stdout from the stdio websocket.
 		stdoutDone := wsutil.WebsocketRecvStream(stdout, buildStdioConn)
@@ -609,10 +618,11 @@ func (client *Client) buildTestInteractive(changeID string, opts *BuildTestOptio
 			}
 		}
 
-		// Set up writesDone channel.
-		writesDone = make(chan struct{})
+		// Track build I/O completion.
+		wgIO.Add(1)
 		go func() {
-			<-stdinDone
+			defer wgIO.Done()
+			<-buildStdinDone
 			<-stdoutDone
 			if stderrDone != nil {
 				<-stderrDone
@@ -622,16 +632,10 @@ func (client *Client) buildTestInteractive(changeID string, opts *BuildTestOptio
 				_ = buildStderrConn.Close()
 			}
 			_ = buildControlConn.Close()
-			close(writesDone)
 		}()
 	}
 
 	// Wait for the build task to complete before connecting to run websockets.
-	waitOpts := &WaitChangeOptions{}
-	if opts.Timeout != 0 {
-		waitOpts.Timeout = opts.Timeout + 30*time.Second
-	}
-
 	for {
 		change, err := client.Change(changeID)
 		if err != nil {
@@ -690,8 +694,10 @@ func (client *Client) buildTestInteractive(changeID string, opts *BuildTestOptio
 					}
 				}
 
-				// Wait for run I/O to complete.
+				// Track run I/O completion.
+				wgIO.Add(1)
 				go func() {
+					defer wgIO.Done()
 					<-runStdinDone
 					<-runStdoutDone
 					if runStderrDone != nil {
@@ -708,6 +714,12 @@ func (client *Client) buildTestInteractive(changeID string, opts *BuildTestOptio
 			}
 		}
 	}
+
+	// Close writesDone when all I/O goroutines are done.
+	go func() {
+		wgIO.Wait()
+		close(writesDone)
+	}()
 
 	process := &BuildTestProcess{
 		changeID:    changeID,

@@ -97,17 +97,21 @@ func (cmd *cmdBuildTest) Execute(args []string) error {
 		stdinIsTerminal := ptyutil.IsTerminal(unix.Stdin)
 
 		// Set terminal to raw mode if we have a TTY.
+		var oldState *ptyutil.State
 		if stdoutIsTerminal && stdinIsTerminal {
-			oldState, err := ptyutil.MakeRaw(unix.Stdin)
-			if err != nil {
-				return fmt.Errorf("cannot change terminal to raw mode: %v", err)
+			var rawErr error
+			oldState, rawErr = ptyutil.MakeRaw(unix.Stdin)
+			if rawErr != nil {
+				return fmt.Errorf("cannot change terminal to raw mode: %v", rawErr)
 			}
-			defer ptyutil.Restore(unix.Stdin, oldState)
 		}
 
 		// Start the interactive build-test process.
 		process, err := cmd.client.BuildTestInteractive(opts)
 		if err != nil {
+			if oldState != nil {
+				ptyutil.Restore(unix.Stdin, oldState)
+			}
 			return err
 		}
 
@@ -117,45 +121,56 @@ func (cmd *cmdBuildTest) Execute(args []string) error {
 		sighup := make(chan struct{})
 		go buildTestControlHandler(process, stdoutIsTerminal, stopControl, sighup)
 
-		finished := make(chan error)
-		go func() {
-			result, waitErr := process.Wait()
-			if waitErr != nil {
-				finished <- waitErr
-				return
-			}
-			// Print exit codes.
-			fmt.Fprintf(Stdout, "BUILD exit code: %d\n", result.Build.ExitCode)
-			if result.Run != nil {
-				fmt.Fprintf(Stdout, "RUN exit code: %d\n", result.Run.ExitCode)
-			}
-			// Return exit code from the run step if present, otherwise from build.
-			if result.Run != nil && result.Run.ExitCode != 0 {
-				finished <- &exitStatus{result.Run.ExitCode}
-				return
-			}
-			if result.Build.ExitCode != 0 {
-				finished <- &exitStatus{result.Build.ExitCode}
-				return
-			}
-			finished <- nil
-		}()
-
-		// Wait for either the process to finish, or SIGHUP to be received.
+		// Wait for the process to finish or SIGHUP.
+		var result *client.BuildTestResult
 		select {
-		case err = <-finished:
-			switch e := err.(type) {
-			case nil:
-				return nil
-			case *exitStatus:
-				panic(e)
-			default:
-				return err
+		case waitErr := <-func() chan error {
+			ch := make(chan error, 1)
+			go func() {
+				r, err := process.Wait()
+				if err != nil {
+					ch <- err
+					return
+				}
+				result = r
+				ch <- nil
+			}()
+			return ch
+		}():
+			if waitErr != nil {
+				if oldState != nil {
+					ptyutil.Restore(unix.Stdin, oldState)
+				}
+				return waitErr
 			}
 		case <-sighup:
-			fmt.Fprintf(os.Stderr, "SIGHUP received, exiting\r\n")
+			if oldState != nil {
+				ptyutil.Restore(unix.Stdin, oldState)
+			}
+			fmt.Fprintf(os.Stderr, "SIGHUP received, exiting\n")
 			return nil
 		}
+
+		// Restore terminal BEFORE printing exit codes, so output is
+		// properly formatted and flushed.
+		if oldState != nil {
+			ptyutil.Restore(unix.Stdin, oldState)
+		}
+
+		// Print exit codes.
+		fmt.Fprintf(Stdout, "\nBUILD exit code: %d\n", result.Build.ExitCode)
+		if result.Run != nil {
+			fmt.Fprintf(Stdout, "RUN exit code: %d\n", result.Run.ExitCode)
+		}
+
+		// Return exit code from the run step if present, otherwise from build.
+		if result.Run != nil && result.Run.ExitCode != 0 {
+			panic(&exitStatus{result.Run.ExitCode})
+		}
+		if result.Build.ExitCode != 0 {
+			panic(&exitStatus{result.Build.ExitCode})
+		}
+		return nil
 	}
 
 	if cmd.Stream {
