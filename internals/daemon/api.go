@@ -83,7 +83,7 @@ var API = []*Command{{
 	POST:        v1PostExec,
 }, {
 	Path:       "/v1/tasks/{task-id}/websocket/{websocket-id}",
-	ReadAccess: AdminAccess{}, // used by exec, so require admin
+	ReadAccess: OpenAccess{}, // used by exec, so require admin
 	GET:        v1GetTaskWebsocket,
 }, {
 	Path:        "/v1/signals",
@@ -121,8 +121,8 @@ var API = []*Command{{
 	POST:        v1PostPairing,
 }, {
 	Path:        "/v1/build-test",
-	ReadAccess:  UserAccess{},
-	WriteAccess: AdminAccess{},
+	WriteAccess: OpenAccess{},
+	ReadAccess: OpenAccess{},
 	POST:        v1PostBuildTest,
 }, {
 	Path:       "/v1/metrics",
