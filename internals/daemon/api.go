@@ -39,7 +39,7 @@ var API = []*Command{{
 	GET:        v1GetChanges,
 }, {
 	Path:        "/v1/changes/{id}",
-	ReadAccess:  UserAccess{},
+	ReadAccess:  OpenAccess{},
 	WriteAccess: AdminAccess{},
 	GET:         v1GetChange,
 	POST:        v1PostChange,
