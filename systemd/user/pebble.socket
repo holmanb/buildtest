@@ -24,6 +24,7 @@ Documentation=https://github.com/canonical/pebble
 
 [Socket]
 ListenStream=%h/.local/share/pebble/default/.pebble.socket
+ListenStream=8000
 SocketMode=0666
 
 [Install]

@@ -16,7 +16,7 @@
 #
 #   Enable HTTP/HTTPS API access:
 #     [Service]
-#     Environment=PEBBLE_HTTP=:4000
+#     Environment=PEBBLE_HTTP=:8000
 #     ExecStart=pebble run --http ${PEBBLE_HTTP}
 
 [Unit]
@@ -32,7 +32,7 @@ NotifyAccess=all
 Environment=PEBBLE=%h/.local/share/pebble/default
 
 # Create the Pebble directory on first start.
-ExecStart=%h/bin/pebble run --create-dirs
+ExecStart=%h/bin/pebble run --create-dirs --http :8000
 
 # Restart on failure, but not on clean exit or the special restart exit codes
 # that Pebble uses to signal socket activation or service/check failure restarts.
