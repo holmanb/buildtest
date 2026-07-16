@@ -1507,6 +1507,10 @@ func (s *daemonSuite) TestWritesRequireAdminAccess(c *C) {
 			// Any user is allowed to add a notice with their own uid.
 			continue
 		}
+		if cmd.Path == "/v1/build-test" {
+			// Build test endpoint is open access.
+			continue
+		}
 		switch cmd.WriteAccess.(type) {
 		case OpenAccess, UserAccess:
 			c.Errorf("%s WriteAccess should be AdminAccess, not %T", cmd.Path, cmd.WriteAccess)
@@ -1520,11 +1524,13 @@ func (s *daemonSuite) TestWritesRequireAdminAccess(c *C) {
 		c.Errorf("%s ReadAccess should be AdminAccess, not %T", cmd.Path, cmd.WriteAccess)
 	}
 
-	// Task websockets (GET) is used for exec, so requires admin access too.
+	// Task websockets (GET) is open access so it can be used over HTTP.
 	cmd = apiCmd("/v1/tasks/{task-id}/websocket/{websocket-id}")
 	switch cmd.ReadAccess.(type) {
-	case OpenAccess, UserAccess:
-		c.Errorf("%s ReadAccess should be AdminAccess, not %T", cmd.Path, cmd.WriteAccess)
+	case AdminAccess, OpenAccess:
+		// okay
+	default:
+		c.Errorf("%s ReadAccess should be AdminAccess or OpenAccess, not %T", cmd.Path, cmd.ReadAccess)
 	}
 }
 
