@@ -139,13 +139,21 @@ func (cmd *cmdEnter) Execute(args []string) error {
 
 	runCmd.Hold = !cmd.Run
 
+	// The subcommand talks to the local daemon started by "enter", so it
+	// must use the daemon's Unix socket, ignoring PEBBLE_BASEURL (which
+	// may point at a remote daemon over TCP).
+	localClient, err := client.New(&client.Config{Socket: cmd.socketPath})
+	if err != nil {
+		return fmt.Errorf("cannot create local client: %w", err)
+	}
+
 	var (
 		commander flags.Commander
 		extraArgs []string
 	)
 
 	parser := Parser(&ParserOptions{
-		Client:     cmd.client,
+		Client:     localClient,
 		PebbleDir:  cmd.pebbleDir,
 		SocketPath: cmd.socketPath,
 	})
@@ -215,7 +223,7 @@ func (cmd *cmdEnter) Execute(args []string) error {
 		panic(runPanic)
 	}
 
-	err := commander.Execute(extraArgs)
+	err = commander.Execute(extraArgs)
 
 	if err != nil {
 		cmd.parser.Command.Active = parser.Command.Active

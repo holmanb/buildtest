@@ -135,6 +135,18 @@ func (rcmd *cmdRun) httpsAddress() string {
 	return os.Getenv("PEBBLE_HTTPS")
 }
 
+// socketClient returns a client that talks to the daemon over its Unix
+// socket, ignoring PEBBLE_BASEURL. The daemon uses this client for its own
+// internal API calls (autostart, waiting for changes, seeding identities),
+// which require admin access; admin access is only granted over concealed
+// transports (Unix socket or HTTPS), so the daemon must always talk to
+// itself over the socket even when an HTTP(S) API is also exposed.
+func (rcmd *cmdRun) socketClient() (*client.Client, error) {
+	return client.New(&client.Config{
+		Socket: rcmd.socketPath,
+	})
+}
+
 func (rcmd *cmdRun) run(ready chan<- func()) {
 	sigs := make(chan os.Signal, 2)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
@@ -307,12 +319,23 @@ func runDaemon(rcmd *cmdRun, ch chan os.Signal, ready chan<- func()) error {
 
 	logger.Debugf("activation done in %v", time.Now().Truncate(time.Millisecond).Sub(t0))
 
+	// The daemon talks to itself over the Unix socket for internal API
+	// calls (autostart, waiting for changes, seeding identities). These
+	// require admin access, which is only granted over concealed
+	// transports (Unix socket or HTTPS), so PEBBLE_BASEURL must not
+	// influence the internal client.
+	socketClient, err := rcmd.socketClient()
+	if err != nil {
+		return fmt.Errorf("cannot create internal client: %w", err)
+	}
+	defer socketClient.CloseIdleConnections()
+
 	if rcmd.Identities != "" {
 		identities, err := readIdentities(rcmd.Identities)
 		if err != nil {
 			return fmt.Errorf("cannot read identities: %w", err)
 		}
-		err = rcmd.client.ReplaceIdentities(identities)
+		err = socketClient.ReplaceIdentities(identities)
 		if err != nil {
 			return fmt.Errorf("cannot replace identities: %w", err)
 		}
@@ -331,7 +354,7 @@ func runDaemon(rcmd *cmdRun, ch chan os.Signal, ready chan<- func()) error {
 	if !rcmd.Hold {
 		// Start the default services (those configured with startup: enabled).
 		servopts := client.ServiceOptions{}
-		changeID, err := rcmd.client.AutoStart(&servopts)
+		changeID, err := socketClient.AutoStart(&servopts)
 		if err != nil {
 			logger.Noticef("Cannot start default services: %v", err)
 		} else {
@@ -339,7 +362,7 @@ func runDaemon(rcmd *cmdRun, ch chan os.Signal, ready chan<- func()) error {
 			// the ready channel (for the "enter" command).
 			go func() {
 				logger.Debugf("Waiting for default services to autostart with change %s.", changeID)
-				_, err := rcmd.client.WaitChange(changeID, nil)
+				_, err := socketClient.WaitChange(changeID, nil)
 				if err != nil {
 					logger.Noticef("Cannot wait for autostart change %s: %v", changeID, err)
 				} else {
@@ -377,7 +400,7 @@ out:
 	// Close the client idle connection to the server (self connection) before we
 	// start with the HTTP/HTTPS shutdown process. This will speed up the server
 	// shutdown, and allow the Pebble process to exit faster.
-	rcmd.client.CloseIdleConnections()
+	socketClient.CloseIdleConnections()
 
 	return d.Stop(ch)
 }

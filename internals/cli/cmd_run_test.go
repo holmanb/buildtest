@@ -214,3 +214,22 @@ func (s *PebbleSuite) TestHTTPSAddressEnvVar(c *C) {
 
 	os.Setenv("PEBBLE_HTTPS", "")
 }
+
+func (s *PebbleSuite) TestSocketClientIgnoresBaseURL(c *C) {
+	// The daemon's internal client must always talk over the Unix socket,
+	// even when PEBBLE_BASEURL is set (e.g. when the daemon also exposes
+	// an HTTP API), because internal calls such as autostart require
+	// admin access, which is only granted over concealed transports.
+	os.Setenv("PEBBLE_BASEURL", "http://192.0.2.1:4000")
+	defer os.Setenv("PEBBLE_BASEURL", "")
+
+	cmd := cli.NewCmdRunWithSocket("/some/socket/path")
+	socketClient, err := cli.CmdRunSocketClient(cmd)
+	c.Assert(err, IsNil)
+
+	// A request must fail with a socket error (not a TCP connection error),
+	// proving the client is using the Unix socket and ignoring the base URL.
+	_, err = socketClient.SysInfo()
+	c.Assert(err, NotNil)
+	c.Check(err, ErrorMatches, `(?s).*socket "/some/socket/path" not found.*`)
+}
