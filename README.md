@@ -1,62 +1,81 @@
-# The Pebble service manager
+# Buildtest
 
-[![pebble](https://snapcraft.io/pebble/badge.svg)](https://snapcraft.io/pebble)
-[![snap](https://github.com/canonical/pebble/actions/workflows/snap.yml/badge.svg)](https://github.com/canonical/pebble/actions/workflows/snap.yml)
-[![binaries](https://github.com/canonical/pebble/actions/workflows/binaries.yml/badge.svg)](https://github.com/canonical/pebble/actions/workflows/binaries.yml)
-[![tests](https://github.com/canonical/pebble/actions/workflows/tests.yml/badge.svg)](https://github.com/canonical/pebble/actions/workflows/tests.yml)
+_Remotely build and test, over HTTP._
 
-_Take control of your internal daemons!_
+**Buildtest** is a minimal daemon for remote build-and-test jobs. Upload a
+source tree, and the daemon builds it with [snapcraft] and runs your [spread]
+tests, streaming output back to the client in real time. When a build fails,
+attach an interactive terminal and debug it in place.
 
-**Pebble** is a lightweight Linux service manager that helps you orchestrate a set of local processes as an organized set. It resembles well-known tools such as _supervisord_, _runit_, or _s6_, in that it can easily manage non-system processes independently from the system services. However, it was designed with unique features such as layered configuration and an HTTP API that help with more specific use cases.
+Buildtest is a stripped-down fork of Canonical's [Pebble] service manager. It
+keeps the daemon core — the HTTP API, changes, and tasks — and drops the
+service-management surface: no services, no plans or layers, no identities,
+notices, checks, or log forwarding. Just `run`, `changes`, `tasks`, and
+`build-test`.
 
-Pebble's key features:
+## Commands
 
-- [Layer](https://ubuntu.com/docs/pebble/reference/layer-specification/)-based configuration
-- Service [dependencies](https://ubuntu.com/docs/pebble/explanation/service-dependencies/)
-- Service [logs](https://ubuntu.com/docs/pebble/reference/cli-commands/#logs) and [log forwarding](https://ubuntu.com/docs/pebble/reference/log-forwarding/)
-- [Health checks](https://ubuntu.com/docs/pebble/reference/health-checks/)
-- [Notices](https://ubuntu.com/docs/pebble/reference/notices/) (aggregated events)
-- [Identities](https://ubuntu.com/docs/pebble/how-to/manage-identities/)
-- Can be used in [virtual machines and containers](https://ubuntu.com/docs/pebble/how-to/manage-a-remote-system/)
-- [CLI commands](https://ubuntu.com/docs/pebble/reference/cli-commands/)
-- [HTTP API](https://ubuntu.com/docs/pebble/explanation/api-and-clients/) with a [Go client](https://pkg.go.dev/github.com/canonical/pebble/client) and a [Python client](https://github.com/canonical/operator/blob/main/ops/pebble.py)
+| Command | Purpose |
+|---|---|
+| `run` | Start the daemon and its HTTP API |
+| `build-test` | Upload a source directory, build it, and run tests |
+| `changes` | List changes (each build-test run is a change) |
+| `tasks` | Show the tasks (build, run) within a change |
+
+`build-test` options:
+
+- `--stream` — stream build and test output live
+- `--debug` — interactive mode: allocate a PTY on the server, forward stdin
+  and signals (e.g. Ctrl-C), and handle terminal resizing, so you can debug a
+  failing build as it happens
+- `--timeout` — overall timeout for the build and test run
 
 ## Quick start
 
-At any Linux shell:
+On the build machine, start the server:
 
 ```bash
-go install github.com/canonical/pebble/cmd/pebble@latest
-mkdir -p ~/.config/pebble/layers
-export PEBBLE=$HOME/.config/pebble
-
-echo """\
-services:
-    demo-service:
-        override: replace
-        command: sleep 1000
-        startup: enabled
-""" > $PEBBLE/layers/001-demo-service.yaml
-
-pebble run
+$ PEBBLE=~/.local/share/pebble/default ./pebble run --http=:8000 -v --create-dirs
 ```
 
-Read more about Pebble's general model [here](https://ubuntu.com/docs/pebble/explanation/general-model/).
+Then, from a machine with the source tree, run the client:
 
-For a hands-on introduction to Pebble, we recommend going through the [tutorial](https://ubuntu.com/docs/pebble/tutorial/getting-started/).
+```bash
+$ PEBBLE_BASEURL=http://arc.local:8000 $HOME/git/buildtest/pebble build-test $HOME/git/tako --stream
+```
 
-## Getting help
+The client tars up the source directory and uploads it; the daemon then runs:
 
-To get the most out of Pebble, we recommend starting with the [documentation](https://ubuntu.com/docs/pebble/).
+1. **Build** — `snapcraft` in the uploaded tree. If the build fails, it is
+   retried once after `snapcraft clean`.
+2. **Run** — spread tests against the built snap. Skipped if the build failed.
 
-You can [create an issue](https://github.com/canonical/pebble/issues/new) and we will help!
+The client reports the exit code of each step.
+
+## Configuration
+
+| Variable | Used by | Meaning |
+|---|---|---|
+| `PEBBLE` | daemon | Data directory (state is kept here) |
+| `PEBBLE_HTTP` | daemon | Address for the HTTP API, e.g. `:8000` (same as `--http`) |
+| `PEBBLE_BASEURL` | client | Base URL of the remote daemon |
 
 ## Hacking and development
 
-See [HACKING.md](HACKING.md) for information on how to run and hack on the Pebble codebase during development. In short, use `go run ./cmd/pebble`.
+See [HACKING.md](HACKING.md) for how to run and hack on the codebase. In
+short, use `go run ./cmd/pebble`.
 
 ## Contributing
 
-We welcome quality external contributions. We have good unit tests for much of the code, and a thorough code review process. Please note that unless it's a trivial fix, it's generally worth opening an issue to discuss before submitting a pull request.
+We welcome quality external contributions. We have good unit tests for much
+of the code, and a thorough code review process. For anything beyond a trivial
+fix, please open an issue to discuss it before submitting a pull request.
 
-Before you contribute a pull request you should sign the [Canonical contributor agreement](https://ubuntu.com/legal/contributors) -- it's the easiest way for you to give us permission to use your contributions.
+## License
+
+Buildtest is licensed under the [GPLv3](COPYING). It is based on
+[Pebble](https://github.com/canonical/pebble), Copyright (c) Canonical Ltd.
+
+[snapcraft]: https://snapcraft.io
+[spread]: https://github.com/snapcore/spread
+[Pebble]: https://github.com/canonical/pebble
