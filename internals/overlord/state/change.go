@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/canonical/pebble/internals/logger"
+	"github.com/holmanb/buildtest/internals/logger"
 )
 
 // Status is used for status values for changes and tasks.

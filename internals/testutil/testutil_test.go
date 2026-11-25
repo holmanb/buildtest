@@ -18,7 +18,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/canonical/pebble/internals/testutil"
+	"github.com/holmanb/buildtest/internals/testutil"
 	"gopkg.in/check.v1"
 )
 

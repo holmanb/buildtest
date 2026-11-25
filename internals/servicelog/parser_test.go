@@ -23,7 +23,7 @@ import (
 
 	. "gopkg.in/check.v1"
 
-	"github.com/canonical/pebble/internals/servicelog"
+	"github.com/holmanb/buildtest/internals/servicelog"
 )
 
 type parserSuite struct{}

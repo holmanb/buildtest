@@ -17,7 +17,7 @@ package cli
 import (
 	"time"
 
-	"github.com/canonical/pebble/internals/timeutil"
+	"github.com/holmanb/buildtest/internals/timeutil"
 )
 
 var timeutilHuman = timeutil.Human

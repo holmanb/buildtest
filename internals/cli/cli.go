@@ -15,26 +15,23 @@
 package cli
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"os/user"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/canonical/go-flags"
 	"golang.org/x/term"
 
-	"github.com/canonical/pebble/client"
-	"github.com/canonical/pebble/cmd"
-	"github.com/canonical/pebble/internals/logger"
+	"github.com/holmanb/buildtest/client"
+	"github.com/holmanb/buildtest/cmd"
+	"github.com/holmanb/buildtest/internals/logger"
 )
 
 var (
@@ -167,7 +164,7 @@ func Parser(opts *ParserOptions) *flags.Parser {
 	flagOpts := flags.Options(flags.PassDoubleDash)
 	parser := flags.NewParser(&defaultOpts, flagOpts)
 	parser.Command.Name = cmd.ProgramName
-	parser.ShortDescription = "System and service manager"
+	parser.ShortDescription = "Build and test daemon"
 	parser.LongDescription = applyPersonality(HelpHeader)
 
 	// Add --help like what go-flags would do for us, but hidden
@@ -176,13 +173,6 @@ func Parser(opts *ParserOptions) *flags.Parser {
 	// Regular expressions for positional and flag arguments
 	positionalRegexp := regexp.MustCompile(`^<\w+(-\w+)>$`)
 	flagRegexp := regexp.MustCompile(`^-\w|--\w+(-\w+)*$`)
-
-	// Create debug command
-	debugCmd, err := parser.AddCommand("debug", cmdDebugSummary, cmdDebugDescription, &cmdDebug{})
-	debugCmd.Hidden = true
-	if err != nil {
-		logger.Panicf("internal error: cannot add command %q: %v", "debug", err)
-	}
 
 	// Add all commands
 	for _, c := range commands {
@@ -193,13 +183,7 @@ func Parser(opts *ParserOptions) *flags.Parser {
 			SocketPath: opts.SocketPath,
 		})
 
-		var target *flags.Command
-		if c.Debug {
-			target = debugCmd
-		} else {
-			target = parser.Command
-		}
-		cmd, err := target.AddCommand(c.Name, applyPersonality(c.Summary), applyPersonality(strings.TrimSpace(c.Description)), obj)
+		cmd, err := parser.Command.AddCommand(c.Name, applyPersonality(c.Summary), applyPersonality(strings.TrimSpace(c.Description)), obj)
 		if err != nil {
 			logger.Panicf("internal error: cannot add command %q: %v", c.Name, err)
 		}
@@ -297,7 +281,7 @@ func withDefaultRunOptions(opts *RunOptions) *RunOptions {
 	}
 
 	if localOpts.PebbleDir == "" {
-		localOpts.PebbleDir = os.Getenv("PEBBLE")
+		localOpts.PebbleDir = os.Getenv("BUILDTEST")
 		if localOpts.PebbleDir == "" {
 			localOpts.PebbleDir = cmd.DefaultDir
 		}
@@ -309,13 +293,13 @@ func withDefaultRunOptions(opts *RunOptions) *RunOptions {
 		localOpts.ClientConfig = &client.Config{}
 	}
 	if localOpts.ClientConfig.Socket == "" {
-		localOpts.ClientConfig.Socket = os.Getenv("PEBBLE_SOCKET")
+		localOpts.ClientConfig.Socket = os.Getenv("BUILDTEST_SOCKET")
 		if localOpts.ClientConfig.Socket == "" {
-			localOpts.ClientConfig.Socket = filepath.Join(localOpts.PebbleDir, ".pebble.socket")
+			localOpts.ClientConfig.Socket = filepath.Join(localOpts.PebbleDir, ".buildtest.socket")
 		}
 	}
 	if localOpts.ClientConfig.BaseURL == "" {
-		localOpts.ClientConfig.BaseURL = os.Getenv("PEBBLE_BASEURL")
+		localOpts.ClientConfig.BaseURL = os.Getenv("BUILDTEST_BASEURL")
 	}
 	return &localOpts
 }
@@ -376,12 +360,6 @@ func Run(options *RunOptions) error {
 		return nil
 	}
 
-	state, err := loadCLIState(localOptions.ClientConfig.Socket)
-	if err != nil {
-		return fmt.Errorf("cannot load CLI state: %w", err)
-	}
-	maybePresentWarnings(state.WarningsLastListed, cli.LatestWarningTime())
-
 	return nil
 }
 
@@ -424,87 +402,7 @@ func errorToMessage(e error) (normalMessage string, err error) {
 }
 
 func getCopySource() string {
-	return os.Getenv("PEBBLE_COPY_ONCE")
-}
-
-type cliState struct {
-	NoticesLastListed time.Time `json:"notices-last-listed"`
-	NoticesLastOkayed time.Time `json:"notices-last-okayed"`
-
-	WarningsLastListed time.Time `json:"warnings-last-listed"`
-	WarningsLastOkayed time.Time `json:"warnings-last-okayed"`
-}
-
-type fullCLIState struct {
-	// Map of socket path to individual cliState instance.
-	Pebble map[string]*cliState `json:"pebble"`
-}
-
-// TODO(benhoyt): add file locking to properly handle multi-user access
-func loadCLIState(socketPath string) (*cliState, error) {
-	fullState, err := loadFullCLIState()
-	if err != nil {
-		return nil, err
-	}
-	st, ok := fullState.Pebble[socketPath]
-	if !ok {
-		return &cliState{}, nil
-	}
-	return st, nil
-}
-
-func loadFullCLIState() (*fullCLIState, error) {
-	path := cliStatePath()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			st := &fullCLIState{
-				Pebble: make(map[string]*cliState),
-			}
-			return st, nil
-		}
-		return nil, err
-	}
-
-	var fullState fullCLIState
-	err = json.Unmarshal(data, &fullState)
-	if err != nil {
-		return nil, err
-	}
-	return &fullState, nil
-}
-
-func saveCLIState(socketPath string, state *cliState) error {
-	fullState, err := loadFullCLIState()
-	if err != nil {
-		return err
-	}
-
-	fullState.Pebble[socketPath] = state
-
-	data, err := json.Marshal(fullState)
-	if err != nil {
-		return err
-	}
-
-	path := cliStatePath()
-	err = os.MkdirAll(filepath.Dir(path), 0o700)
-	if err != nil {
-		return err
-	}
-	err = os.WriteFile(path, data, 0o600)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func cliStatePath() string {
-	configDir := os.Getenv("XDG_CONFIG_HOME")
-	if configDir == "" {
-		configDir = os.ExpandEnv("$HOME/.config")
-	}
-	return filepath.Join(configDir, "pebble", "cli.json")
+	return os.Getenv("BUILDTEST_COPY_ONCE")
 }
 
 func printClientVersion() {

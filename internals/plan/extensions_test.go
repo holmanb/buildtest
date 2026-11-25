@@ -24,7 +24,7 @@ import (
 	. "gopkg.in/check.v1"
 	"gopkg.in/yaml.v3"
 
-	"github.com/canonical/pebble/internals/plan"
+	"github.com/holmanb/buildtest/internals/plan"
 )
 
 type inputLayer struct {

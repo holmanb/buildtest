@@ -30,8 +30,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/canonical/pebble/internals/logger"
-	"github.com/canonical/pebble/internals/wsutil"
+	"github.com/holmanb/buildtest/internals/logger"
+	"github.com/holmanb/buildtest/internals/wsutil"
 	"github.com/gorilla/websocket"
 )
 

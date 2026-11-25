@@ -24,8 +24,8 @@ import (
 	. "gopkg.in/check.v1"
 	"gopkg.in/tomb.v2"
 
-	"github.com/canonical/pebble/internals/overlord/buildteststate"
-	"github.com/canonical/pebble/internals/overlord/state"
+	"github.com/holmanb/buildtest/internals/overlord/buildteststate"
+	"github.com/holmanb/buildtest/internals/overlord/state"
 )
 
 type handlersSuite struct {

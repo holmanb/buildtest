@@ -19,7 +19,7 @@ import (
 
 	"github.com/canonical/go-flags"
 
-	"github.com/canonical/pebble/client"
+	"github.com/holmanb/buildtest/client"
 )
 
 const cmdHealthSummary = "Query health of checks"
@@ -69,7 +69,7 @@ func (cmd *cmdHealth) Execute(args []string) error {
 	}
 
 	opts := client.HealthOptions{
-		Level: client.CheckLevel(cmd.Level),
+		Level: cmd.Level,
 		Names: cmd.Positional.Checks,
 	}
 	health, err := cmd.client.Health(&opts)
@@ -79,19 +79,19 @@ func (cmd *cmdHealth) Execute(args []string) error {
 
 	if cmd.Format == "text" {
 		status := "unhealthy"
-		if health {
+		if health.Healthy {
 			status = "healthy"
 		}
 		fmt.Fprintln(Stdout, status)
 
-		if !health {
+		if !health.Healthy {
 			panic(&exitStatus{1})
 		}
 
 		return nil
 	}
 
-	err = cmd.formatNonText(healthResult{Healthy: health})
+	err = cmd.formatNonText(healthResult{Healthy: health.Healthy})
 	if err != nil {
 		return err
 	}

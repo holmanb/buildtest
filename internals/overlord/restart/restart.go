@@ -21,7 +21,7 @@ import (
 	"errors"
 	"sync/atomic"
 
-	"github.com/canonical/pebble/internals/overlord/state"
+	"github.com/holmanb/buildtest/internals/overlord/state"
 )
 
 type RestartType int32

@@ -21,8 +21,8 @@ import (
 
 	"github.com/canonical/go-flags"
 
-	"github.com/canonical/pebble/client"
-	"github.com/canonical/pebble/cmd"
+	"github.com/holmanb/buildtest/client"
+	"github.com/holmanb/buildtest/cmd"
 )
 
 const cmdChangesSummary = "List system changes"
@@ -33,6 +33,7 @@ The changes command displays a summary of system changes performed recently.
 type cmdChanges struct {
 	client *client.Client
 
+	Abort bool `long:"abort"`
 	timeMixin
 	formatMixin
 	Positional struct {
@@ -59,7 +60,9 @@ func init() {
 		Name:        "changes",
 		Summary:     cmdChangesSummary,
 		Description: cmdChangesDescription,
-		ArgsHelp:    merge(timeArgsHelp, formatArgsHelp),
+		ArgsHelp:    merge(timeArgsHelp, formatArgsHelp, map[string]string{
+			"--abort": "Abort the change with the given ID",
+		}),
 		New: func(opts *CmdOptions) flags.Commander {
 			return &cmdChanges{client: opts.Client}
 		},
@@ -97,6 +100,21 @@ func queryChanges(cli *client.Client, opts *client.ChangesOptions) ([]*client.Ch
 func (c *cmdChanges) Execute(args []string) error {
 	if len(args) > 0 {
 		return ErrExtraArgs
+	}
+
+	if c.Abort {
+		if c.Positional.Service == "" {
+			return fmt.Errorf("please provide a change ID to abort")
+		}
+		if !allDigits(c.Positional.Service) {
+			return fmt.Errorf("invalid change ID %q", c.Positional.Service)
+		}
+		_, err := c.client.Abort(c.Positional.Service)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(Stdout, "Change %s aborted.\n", c.Positional.Service)
+		return nil
 	}
 
 	if allDigits(c.Positional.Service) {

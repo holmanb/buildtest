@@ -20,8 +20,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/canonical/pebble/internals/logger"
-	"github.com/canonical/pebble/internals/overlord/state"
+	"github.com/holmanb/buildtest/internals/logger"
+	"github.com/holmanb/buildtest/internals/overlord/state"
 )
 
 type changeInfo struct {

@@ -1,30 +1,28 @@
-# Hacking on Pebble
+# Hacking on Buildtest
 
 - [Running the daemon](#running-the-daemon)
 - [Using the CLI client](#using-the-cli-client)
 - [Using Curl to hit the API](#using-curl-to-hit-the-api)
 - [Code style](#code-style)
 - [Running the tests](#running-the-tests)
-- [Docs](#docs)
-- [Creating a release](#creating-a-release)
 
-Hacking on Pebble is easy. It's written in Go, so install or [download](https://golang.org/dl/) a copy of the latest version of Go. Pebble uses [Go modules](https://golang.org/ref/mod) for managing dependencies, so all of the standard Go tooling just works.
+Hacking on Buildtest is easy. It's written in Go, so install or [download](https://golang.org/dl/) a copy of the latest version of Go. Buildtest uses [Go modules](https://golang.org/ref/mod) for managing dependencies, so all of the standard Go tooling just works.
 
-To compile and run Pebble, use the `go run` command on the `cmd/pebble` directory. The first time you run it, it will download dependencies and build packages, so will take a few seconds (but after that be very fast):
+To compile and run Buildtest, use the `go run` command on the `cmd/buildtest` directory. The first time you run it, it will download dependencies and build packages, so will take a few seconds (but after that be very fast):
 
 ```
-$ go run ./cmd/pebble
-Pebble lets you control services and perform management actions on
-the system that is running them.
+$ go run ./cmd/buildtest
+Buildtest lets you build source and run tests on the system that is
+running the daemon.
 
-Usage: pebble <command> [<options>...]
+Usage: buildtest <command> [<options>...]
 ...
 ```
 
 If you want to build and install the executable to your `~/go/bin` directory (which you may want to add to your path), use `go install`:
 
 ```
-go install ./cmd/pebble
+go install ./cmd/buildtest
 ```
 
 However, during development it's easiest just to use `go run`, as that will automatically recompile if you've made any changes.
@@ -32,54 +30,50 @@ However, during development it's easiest just to use `go run`, as that will auto
 
 ## Running the daemon
 
-To run the Pebble daemon, set the `$PEBBLE` environment variable and use the `pebble run` sub-command, something like this:
+To run the Buildtest daemon, set the `$BUILDTEST` environment variable and use the `buildtest run` sub-command, something like this:
 
 ```
-$ mkdir ~/pebble
-$ export PEBBLE=~/pebble
-$ go run ./cmd/pebble run
-2021-09-15T01:37:23.962Z [pebble] Started daemon.
+$ mkdir ~/buildtest
+$ export BUILDTEST=~/buildtest
+$ go run ./cmd/buildtest run --http=:8000
+2021-09-15T01:37:23.962Z [buildtest] Started daemon.
 ...
 ```
 
 
 ## Using the CLI client
 
-The use the Pebble command line client, run one of the other Pebble sub-commands, such as `pebble plan` or `pebble services` (if the server is running in one terminal, do this in another):
+Then use the Buildtest command line client, run one of the other Buildtest sub-commands, such as `buildtest changes` (if the server is running in one terminal, do this in another):
 
 ```
-$ export PEBBLE=~/pebble
-$ go run ./cmd/pebble plan
-services:
-    snappass:
-        override: replace
-        command: sleep 60
+$ export BUILDTEST=~/buildtest
+$ go run ./cmd/buildtest changes
+ID   Status  Spawn                     Ready                     Summary
+...
+```
 
-$ go run ./cmd/pebble services
-Service   Startup   Current
-snappass  disabled  inactive
+To run a build-test job against a remote daemon, set `BUILDTEST_BASEURL`:
+
+```
+$ BUILDTEST_BASEURL=http://buildhost:8000 go run ./cmd/buildtest build-test ~/src/myproject --stream
 ```
 
 
 ## Using Curl to hit the API
 
-For debugging, you can also use [curl](https://curl.se/) in unix socket mode to hit the Pebble API:
+For debugging, you can also use [curl](https://curl.se/) in unix socket mode to hit the Buildtest API:
 
 ```
-$ curl --unix-socket ~/pebble/.pebble.socket 'http://localhost/v1/services?names=snappass' | jq
+$ curl --unix-socket ~/buildtest/.buildtest.socket 'http://localhost/v1/changes' | jq
   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
                                  Dload  Upload   Total   Spent    Left  Speed
-100   120  100   120    0     0   117k      0 --:--:-- --:--:-- --:--:--  117k
+100   120  100   120    0     0    117k      0 --:--:-- --:--:-- --:--:--  117k
 {
   "type": "sync",
   "status-code": 200,
   "status": "OK",
   "result": [
-    {
-      "name": "snappass",
-      "startup": "disabled",
-      "current": "inactive"
-    }
+    ...
   ]
 }
 ```
@@ -108,11 +102,11 @@ Recommended prefixes are: `fix:`, `feat:`, `build:`, `chore:`, `ci:`, `docs:`, `
 
 ### Imports
 
-Pebble imports should be arranged in three groups:
+Buildtest imports should be arranged in three groups:
 
 - standard library imports
-- third-party / non-Pebble imports
-- Pebble imports (i.e. those prefixed with `github.com/canonical/pebble`)
+- third-party / non-Buildtest imports
+- Buildtest imports (i.e. those prefixed with `github.com/holmanb/buildtest`)
 
 Imports should be sorted alphabetically within each group.
 
@@ -136,8 +130,8 @@ import (
 	"github.com/gorilla/mux"
 	. "gopkg.in/check.v1"
 
-	"github.com/canonical/pebble/internals/systemd"
-	"github.com/canonical/pebble/internals/testutil"
+	"github.com/holmanb/buildtest/internals/systemd"
+	"github.com/holmanb/buildtest/internals/testutil"
 )
 ```
 
@@ -158,138 +152,48 @@ fmt.Errorf("cannot create log client: %w", err)
 
 ## Running the tests
 
-Pebble has a suite of Go unit tests, which you can run using the regular `go test` command. To test all packages in the Pebble repository:
+Buildtest has a suite of Go unit tests, which you can run using the regular `go test` command. To test all packages in the Buildtest repository:
 
 ```
 $ go test ./...
-ok      github.com/canonical/pebble/client  (cached)
-?       github.com/canonical/pebble/cmd [no test files]
-ok      github.com/canonical/pebble/cmd/pebble  0.095s
+ok      github.com/holmanb/buildtest/client  (cached)
+?       github.com/holmanb/buildtest/cmd [no test files]
+ok      github.com/holmanb/buildtest/cmd/buildtest  0.095s
 ...
 ```
 
 To test a single package, simply pass the package path to `go test`:
 
 ```
-$ go test ./cmd/pebble
-ok      github.com/canonical/pebble/cmd/pebble  0.115s
+$ go test ./internals/cli
+ok      github.com/holmanb/buildtest/internals/cli  0.115s
 ```
 
 To run a single suite or a single test, pass the suite or test name to the [gocheck](https://labix.org/gocheck) test runner:
 
 ```
-$ go test ./cmd/pebble -v -check.v -check.f PebbleSuite
+$ go test ./internals/cli -v -check.v -check.f PebbleSuite
 === RUN   Test
-PASS: cmd_add_test.go:38: PebbleSuite.TestAdd   0.002s
+PASS: cmd_changes_test.go:38: PebbleSuite.TestChanges   0.002s
 PASS: format_test.go:52: PebbleSuite.TestCanUnicode 0.000s
 ...
-PASS: cmd_version_test.go:26: PebbleSuite.TestVersionCommand    0.000s
 OK: 20 passed
 --- PASS: Test (0.02s)
 PASS
-ok      github.com/canonical/pebble/cmd/pebble  0.022s
-
-$ go test ./cmd/pebble -v -check.v -check.f PebbleSuite.TestAdd
-=== RUN   Test
-PASS: cmd_add_test.go:38: PebbleSuite.TestAdd   0.002s
-OK: 1 passed
---- PASS: Test (0.00s)
-PASS
-ok      github.com/canonical/pebble/cmd/pebble  0.007s
+ok      github.com/holmanb/buildtest/internals/cli  0.022s
 ```
 
 Note that during CI we run the tests with `-race` to catch data races:
 
 ```
 $ go test -race ./...
-ok      github.com/canonical/pebble/client  (cached)
-?       github.com/canonical/pebble/cmd [no test files]
-ok      github.com/canonical/pebble/cmd/pebble  0.165s
+ok      github.com/holmanb/buildtest/client  (cached)
 ...
 ```
 
-Pebble also has a suite of integration tests for testing things like `pebble run`. To run them, use the "integration" build constraint:
+Buildtest also has a suite of integration tests for testing things like `buildtest run`. To run them, use the "integration" build constraint:
 
 ```
 $ go test -count=1 -tags=integration ./tests/
-ok  	github.com/canonical/pebble/tests	4.774s
+ok  	github.com/holmanb/buildtest/tests	4.774s
 ```
-
-## Docs
-
-We use [`sphinx`](https://www.sphinx-doc.org/en/master/) to build the docs with styles preconfigured by the [Canonical Documentation Starter Pack](https://github.com/canonical/sphinx-docs-starter-pack).
-
-### Building the Docs
-
-To build the docs, run `make run` in the `docs` directory.
-
-### Pulling in the Latest Style Changes and Dependencies
-
-To update the documentation starter pack, run `make update` in the `docs` directory.
-
-### Updating the CLI reference documentation
-
-To add a new CLI command, ensure that it is added in the list at the top of the [doc](docs/reference/cli-commands.md) in the appropriate section, and then add a new section for the details **in alphabetical order**.
-
-The section should look like:
-
-````
-(reference_pebble_{command name}_command)=
-## {command name}
-
-The `{command name}` command is used to {describe the command}.
-
-<!-- START AUTOMATED OUTPUT FOR {command name} -->
-```{terminal}
-pebble {command name} --help
-```
-<!-- END AUTOMATED OUTPUT FOR {command name} -->
-````
-
-With `{command name}` replaced by the name of the command and `{describe the command}` replaced by a suitable description.
-
-To automatically update the CLI reference documentation, run `make cli-help` in the `docs` directory.
-
-A CI workflow will fail if the CLI reference documentation does not match the actual output from Pebble.
-
-Note that the [OpenAPI spec](docs/specs/openapi.yaml) also needs to be manually updated.
-
-### Writing a great doc
-
-- Use short sentences, ideally with one or two clauses.
-- Use headings to split the doc into sections. Make sure that the purpose of each section is clear from its heading.
-- Avoid a long introduction. Assume that the reader is only going to scan the first paragraph and the headings.
-- Avoid background context unless it's essential for the reader to understand.
-
-Recommended tone:
-
-- Use a casual tone, but avoid idioms. Common contractions such as "it's" and "doesn't" are great.
-- Use "we" to include the reader in what you're explaining.
-- Avoid passive descriptions. If you expect the reader to do something, give a direct instruction.
-
-## Creating a release
-
-When releasing, you need to release the `master` branch and the `fips` branch.
-
-Binaries will be created and uploaded automatically to this release by the [binaries.yml](https://github.com/canonical/pebble/blob/master/.github/workflows/binaries.yml) GitHub Action. In addition, a new Snap version is built and uploaded to the [Snap Store](https://snapcraft.io/pebble) (but promotion to `stable` is a manual step).
-
-Follow these steps:
-
-### Main release (master branch)
-
-- Update `Version` in `cmd/version.go` to the version you're about to publish, for example `v1.27.0`, open a pull request, have it reviewed and merged into the `master` branch.
-- [Draft a new GitHub release](https://github.com/canonical/pebble/releases/new).
-- Enter the version tag (for example `v1.27.0`) and select "Create new tag: on publish".
-- Enter a release title: include the version tag and a short summary of the release.
-- Write release notes: describe new features and bug fixes, and include a link to the full list of commits.
-- Click "Publish release".
-- Monitor the release [GitHub Actions](https://github.com/canonical/pebble/actions) and check that the [snap](https://snapcraft.io/pebble) is uploaded correctly.
-- If you're confident it's a compatible release, [promote the `candidate` snap to `stable`](https://snapcraft.io/pebble/releases).
-- Find the security scan artifact on the corresponding [SBOM and secscan](https://github.com/canonical/pebble/actions/workflows/sbom-secscan.yaml) run, and upload it to the [SSDLC Pebble folder in Drive](https://drive.google.com/drive/folders/11WR629JFPJ8IMPI0kcsNp_qdf39c6no3). Open the artifact and verify that the security scan has not found any vulnerabilities.
-
-### FIPS release (fips branch)
-
-- Open a pull request to merge the `master` branch into the `fips` branch, resolve any conflicts, and have it reviewed and merged. **Important:** merge using a true merge commit, rather than a squash-and-merge commit.
-- Open a second PR on the `fips` branch to bump the `Version` in `cmd/version.go` to the FIPS version, for example `v1.27.0-fips`, and have it reviewed and merged.
-- Publish a FIPS GitHub release (for example `v1.27.0-fips`) targeting the tip of the `fips` branch.
-- As with the main release, monitor the release [GitHub Actions](https://github.com/canonical/pebble/actions), check that the FIPS snap is uploaded, and promote it to stable.

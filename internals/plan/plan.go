@@ -30,8 +30,8 @@ import (
 	"github.com/canonical/x-go/strutil/shlex"
 	"gopkg.in/yaml.v3"
 
-	"github.com/canonical/pebble/internals/logger"
-	"github.com/canonical/pebble/internals/osutil"
+	"github.com/holmanb/buildtest/internals/logger"
+	"github.com/holmanb/buildtest/internals/osutil"
 )
 
 // SectionExtension allows the plan layer schema to be extended without
@@ -857,8 +857,8 @@ func (layer *Layer) Validate() error {
 				Message: "cannot use empty string as service name",
 			}
 		}
-		if name == "pebble" {
-			// Disallow service name "pebble" to avoid ambiguity (for example,
+		if name == "buildtest" {
+			// Disallow service name "buildtest" to avoid ambiguity (for example,
 			// in log output).
 			return &FormatError{
 				Message: fmt.Sprintf("cannot use reserved service name %q", name),

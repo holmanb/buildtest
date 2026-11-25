@@ -28,15 +28,13 @@ import (
 	. "gopkg.in/check.v1"
 	"gopkg.in/tomb.v2"
 
-	"github.com/canonical/pebble/cmd"
-	"github.com/canonical/pebble/internals/osutil"
-	"github.com/canonical/pebble/internals/overlord"
-	"github.com/canonical/pebble/internals/overlord/pairingstate"
-	"github.com/canonical/pebble/internals/overlord/patch"
-	"github.com/canonical/pebble/internals/overlord/restart"
-	"github.com/canonical/pebble/internals/overlord/state"
-	"github.com/canonical/pebble/internals/plan"
-	"github.com/canonical/pebble/internals/testutil"
+	"github.com/holmanb/buildtest/cmd"
+	"github.com/holmanb/buildtest/internals/osutil"
+	"github.com/holmanb/buildtest/internals/overlord"
+	"github.com/holmanb/buildtest/internals/overlord/patch"
+	"github.com/holmanb/buildtest/internals/overlord/restart"
+	"github.com/holmanb/buildtest/internals/overlord/state"
+	"github.com/holmanb/buildtest/internals/testutil"
 )
 
 func Test(t *testing.T) {
@@ -73,11 +71,9 @@ func fakePruneTicker() (w *ticker, restore func()) {
 func (ovs *overlordSuite) SetUpTest(c *C) {
 	ovs.dir = c.MkDir()
 	ovs.statePath = filepath.Join(ovs.dir, cmd.StateFile)
-	plan.RegisterSectionExtension(pairingstate.PairingField, &pairingstate.SectionExtension{})
 }
 
 func (ovs *overlordSuite) TearDownTest(c *C) {
-	plan.UnregisterSectionExtension(pairingstate.PairingField)
 }
 
 func (ovs *overlordSuite) TestNew(c *C) {

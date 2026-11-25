@@ -1,11 +1,11 @@
 _build/
-cmd/pebble/pebble
+cmd/buildtest/buildtest
 cmd/version_generated.go
 cmd/VERSION
 *.swp
 *.swo
 .idea
 .vscode
-/pebble
+/buildtest
 dist/
 *.test

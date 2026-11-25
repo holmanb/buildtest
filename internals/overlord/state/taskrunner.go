@@ -20,7 +20,7 @@ import (
 
 	"gopkg.in/tomb.v2"
 
-	"github.com/canonical/pebble/internals/logger"
+	"github.com/holmanb/buildtest/internals/logger"
 )
 
 // HandlerFunc is the type of function for the handlers

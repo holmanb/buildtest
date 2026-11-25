@@ -19,8 +19,8 @@ import (
 
 	"github.com/canonical/go-flags"
 
-	"github.com/canonical/pebble/client"
-	version "github.com/canonical/pebble/cmd"
+	"github.com/holmanb/buildtest/client"
+	version "github.com/holmanb/buildtest/cmd"
 )
 
 const cmdVersionSummary = "Show version details"

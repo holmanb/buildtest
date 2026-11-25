@@ -18,12 +18,10 @@ import (
 	"io/fs"
 	"os"
 	"path"
-	"path/filepath"
 
 	. "gopkg.in/check.v1"
 
-	"github.com/canonical/pebble/internals/cli"
-	"github.com/canonical/pebble/internals/overlord"
+	"github.com/holmanb/buildtest/internals/cli"
 )
 
 func (s *PebbleSuite) TestMaybeCopyPebbleDir(c *C) {
@@ -128,108 +126,20 @@ func (s *PebbleSuite) TestMaybeCopyPebbleDirSourceNotADirectory(c *C) {
 	c.Assert(err, ErrorMatches, ".*not a directory.*")
 }
 
-func (s *PebbleSuite) TestSetupTLSOptionsHTTPSNotSet(c *C) {
-	pebbleDir := c.MkDir()
-
-	// No HTTPS configured: no identity should be loaded or generated, and
-	// the persist mode must not matter.
-	opts, err := cli.SetupTLSOptions(pebbleDir, "", overlord.PersistDefault)
-	c.Assert(err, IsNil)
-	c.Check(opts.Signer, IsNil)
-
-	opts, err = cli.SetupTLSOptions(pebbleDir, "", overlord.PersistNever)
-	c.Assert(err, IsNil)
-	c.Check(opts.Signer, IsNil)
-
-	// Also confirm idkey.Get was never called by checking no "identity"
-	// directory was created in pebbleDir.
-	_, err = os.Stat(filepath.Join(pebbleDir, "identity"))
-	c.Check(os.IsNotExist(err), Equals, true)
-}
-
-func (s *PebbleSuite) TestSetupTLSOptionsHTTPSWithPersistNever(c *C) {
-	pebbleDir := c.MkDir()
-
-	opts, err := cli.SetupTLSOptions(pebbleDir, ":8443", overlord.PersistNever)
-	c.Assert(err, ErrorMatches, `cannot use --https with PEBBLE_PERSIST=never: identity key requires persistent state`)
-	c.Check(opts.Signer, IsNil)
-
-	// No identity directory or key should have been created.
-	_, err = os.Stat(filepath.Join(pebbleDir, "identity"))
-	c.Check(os.IsNotExist(err), Equals, true)
-}
-
-func (s *PebbleSuite) TestSetupTLSOptionsHTTPSWithPersistDefault(c *C) {
-	pebbleDir := c.MkDir()
-
-	opts, err := cli.SetupTLSOptions(pebbleDir, ":8443", overlord.PersistDefault)
-	c.Assert(err, IsNil)
-	c.Assert(opts.Signer, NotNil)
-	c.Check(opts.Signer.Fingerprint(), Not(Equals), "")
-
-	// The identity key was persisted to disk.
-	info, err := os.Stat(filepath.Join(pebbleDir, "identity", "key.pem"))
-	c.Assert(err, IsNil)
-	c.Check(info.Mode().IsRegular(), Equals, true)
-
-	// Calling again should reuse the existing key (same fingerprint).
-	opts2, err := cli.SetupTLSOptions(pebbleDir, ":8443", overlord.PersistDefault)
-	c.Assert(err, IsNil)
-	c.Assert(opts2.Signer, NotNil)
-	c.Check(opts2.Signer.Fingerprint(), Equals, opts.Signer.Fingerprint())
-}
-
 func (s *PebbleSuite) TestHTTPAddressEnvVar(c *C) {
-	os.Setenv("PEBBLE_HTTP", "")
+	os.Setenv("BUILDTEST_HTTP", "")
 
 	// No flag, no env var: empty.
-	cmd := cli.NewCmdRun("", "")
+	cmd := cli.NewCmdRun("")
 	c.Check(cli.CmdRunHTTPAddress(cmd), Equals, "")
 
 	// Env var only.
-	os.Setenv("PEBBLE_HTTP", ":4000")
+	os.Setenv("BUILDTEST_HTTP", ":4000")
 	c.Check(cli.CmdRunHTTPAddress(cmd), Equals, ":4000")
 
 	// Flag overrides env var.
-	cmd = cli.NewCmdRun(":5000", "")
+	cmd = cli.NewCmdRun(":5000")
 	c.Check(cli.CmdRunHTTPAddress(cmd), Equals, ":5000")
 
-	os.Setenv("PEBBLE_HTTP", "")
-}
-
-func (s *PebbleSuite) TestHTTPSAddressEnvVar(c *C) {
-	os.Setenv("PEBBLE_HTTPS", "")
-
-	// No flag, no env var: empty.
-	cmd := cli.NewCmdRun("", "")
-	c.Check(cli.CmdRunHTTPSAddress(cmd), Equals, "")
-
-	// Env var only.
-	os.Setenv("PEBBLE_HTTPS", ":8443")
-	c.Check(cli.CmdRunHTTPSAddress(cmd), Equals, ":8443")
-
-	// Flag overrides env var.
-	cmd = cli.NewCmdRun("", ":9443")
-	c.Check(cli.CmdRunHTTPSAddress(cmd), Equals, ":9443")
-
-	os.Setenv("PEBBLE_HTTPS", "")
-}
-
-func (s *PebbleSuite) TestSocketClientIgnoresBaseURL(c *C) {
-	// The daemon's internal client must always talk over the Unix socket,
-	// even when PEBBLE_BASEURL is set (e.g. when the daemon also exposes
-	// an HTTP API), because internal calls such as autostart require
-	// admin access, which is only granted over concealed transports.
-	os.Setenv("PEBBLE_BASEURL", "http://192.0.2.1:4000")
-	defer os.Setenv("PEBBLE_BASEURL", "")
-
-	cmd := cli.NewCmdRunWithSocket("/some/socket/path")
-	socketClient, err := cli.CmdRunSocketClient(cmd)
-	c.Assert(err, IsNil)
-
-	// A request must fail with a socket error (not a TCP connection error),
-	// proving the client is using the Unix socket and ignoring the base URL.
-	_, err = socketClient.SysInfo()
-	c.Assert(err, NotNil)
-	c.Check(err, ErrorMatches, `(?s).*socket "/some/socket/path" not found.*`)
+	os.Setenv("BUILDTEST_HTTP", "")
 }

@@ -26,7 +26,7 @@ import (
 )
 
 var (
-	appID = "pebble"
+	appID = "buildtest"
 )
 
 // A Logger is a fairly minimal logging tool.
@@ -133,7 +133,7 @@ const (
 	SecuritySysStartup         SecurityEvent = "sys_startup"
 )
 
-// SetAppID sets the "appid" field used for security logging. The default is "pebble".
+// SetAppID sets the "appid" field used for security logging. The default is "buildtest".
 func SetAppID(s string) {
 	appID = s
 }
@@ -182,9 +182,9 @@ type defaultLogger struct {
 	buf []byte
 }
 
-// Debug only prints if PEBBLE_DEBUG is set.
+// Debug only prints if BUILDTEST_DEBUG is set.
 func (l *defaultLogger) Debug(msg string) {
-	if os.Getenv("PEBBLE_DEBUG") == "1" {
+	if os.Getenv("BUILDTEST_DEBUG") == "1" {
 		l.Notice("DEBUG " + msg)
 	}
 }

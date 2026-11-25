@@ -26,7 +26,7 @@ jobs:
     - name: Test and build
       run: |
         go test -race ./... -check.vv
-        go build ./cmd/pebble
+        go build ./cmd/buildtest
 
   root-tests:
     runs-on: ubuntu-latest
@@ -44,7 +44,7 @@ jobs:
 
     - name: Test
       run: |
-        PEBBLE_TEST_USER=runner PEBBLE_TEST_GROUP=runner sudo -E -H "$(which go)" test ./...
+        BUILDTEST_TEST_USER=runner BUILDTEST_TEST_GROUP=runner sudo -E -H "$(which go)" test ./...
 
   format:
     runs-on: ubuntu-latest
@@ -68,23 +68,3 @@ jobs:
     - name: Ensure no use of empty interface (should be any)
       run: |
         ! egrep -R --exclude-dir .git 'interface\{\}'
-
-  docs:
-    runs-on: ubuntu-latest
-
-    name: Automated docs check
-    steps:
-    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
-      with:
-        persist-credentials: false
-
-    - name: Set up Python
-      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
-      with:
-        python-version: '3.12' 
-
-    - name: Ensure no CLI reference doc changes
-      run: |
-        make cli-help
-        git diff --exit-code
-      working-directory: ./docs

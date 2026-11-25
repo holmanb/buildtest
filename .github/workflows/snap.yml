@@ -51,12 +51,12 @@ jobs:
           path: |
             ~/.cache/snapcraft/log/
             ~/.local/state/snapcraft/log/
-            pebble_*.txt
+            buildtest_*.txt
 
       - name: Attach ${{ steps.build-snap.outputs.snap }} to GH workflow execution
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
-          name: pebble-snap-amd64
+          name: buildtest-snap-amd64
           path: ${{ steps.build-snap.outputs.snap }}
 
   remote-build:
@@ -81,13 +81,13 @@ jobs:
       - name: Set LP credentials for remote build
         env:
           LP_CREDENTIALS: ${{ secrets.LP_CREDENTIALS }}
-          PEBBLE_DEV_MAILING_LIST: ${{ secrets.PEBBLE_DEV_MAILING_LIST }}
+          BUILDTEST_DEV_MAILING_LIST: ${{ secrets.BUILDTEST_DEV_MAILING_LIST }}
         run: |
           lp_creds_path="$HOME/.local/share/snapcraft/"
           mkdir -p $lp_creds_path
           echo "$LP_CREDENTIALS" > ${lp_creds_path}/launchpad-credentials
-          git config --global user.email "$PEBBLE_DEV_MAILING_LIST"
-          git config --global user.name "pebble-dev"
+          git config --global user.email "$BUILDTEST_DEV_MAILING_LIST"
+          git config --global user.name "buildtest-dev"
 
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6
@@ -113,7 +113,7 @@ jobs:
 
       - name: Rename the logs file, for colons are not allowed in the artifact name
         if: always()
-        run: cat snapcraft-pebble-*.txt > snapcraft-logs.txt || echo "no log files"
+        run: cat snapcraft-buildtest-*.txt > snapcraft-logs.txt || echo "no log files"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         if: always()
@@ -122,14 +122,14 @@ jobs:
           path: |
             ~/.cache/snapcraft/log/
             ~/.local/state/snapcraft/log/
-            pebble_*.txt
+            buildtest_*.txt
             snapcraft-logs.txt
 
       - name: Attach ${{ steps.build-snap.outputs.snap }} to GH workflow execution
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         if: steps.build-snap.outcome == 'success'
         with:
-          name: pebble-snap-${{ matrix.arch }}
+          name: buildtest-snap-${{ matrix.arch }}
           path: ${{ steps.build-snap.outputs.snap }}
 
   test:
@@ -145,7 +145,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
         with:
-          pattern: pebble-snap-amd64
+          pattern: buildtest-snap-amd64
 
       - id: get-snap
         run: echo "filename=$(echo pebble*${TEST_ON}*.snap)" >> $GITHUB_OUTPUT
@@ -175,7 +175,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
         with:
-          pattern: pebble-snap-${{ matrix.arch }}
+          pattern: buildtest-snap-${{ matrix.arch }}
 
       - id: get-snap
         env:

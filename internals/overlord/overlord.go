@@ -28,21 +28,13 @@ import (
 	"github.com/canonical/x-go/randutil"
 	"gopkg.in/tomb.v2"
 
-	"github.com/canonical/pebble/cmd"
-	"github.com/canonical/pebble/internals/osutil"
-	"github.com/canonical/pebble/internals/overlord/buildteststate"
-	"github.com/canonical/pebble/internals/overlord/checkstate"
-	"github.com/canonical/pebble/internals/overlord/cmdstate"
-	"github.com/canonical/pebble/internals/overlord/identities"
-	"github.com/canonical/pebble/internals/overlord/logstate"
-	"github.com/canonical/pebble/internals/overlord/pairingstate"
-	"github.com/canonical/pebble/internals/overlord/patch"
-	"github.com/canonical/pebble/internals/overlord/planstate"
-	"github.com/canonical/pebble/internals/overlord/restart"
-	"github.com/canonical/pebble/internals/overlord/servstate"
-	"github.com/canonical/pebble/internals/overlord/state"
-	"github.com/canonical/pebble/internals/overlord/tlsstate"
-	"github.com/canonical/pebble/internals/timing"
+	"github.com/holmanb/buildtest/cmd"
+	"github.com/holmanb/buildtest/internals/osutil"
+	"github.com/holmanb/buildtest/internals/overlord/buildteststate"
+	"github.com/holmanb/buildtest/internals/overlord/patch"
+	"github.com/holmanb/buildtest/internals/overlord/restart"
+	"github.com/holmanb/buildtest/internals/overlord/state"
+	"github.com/holmanb/buildtest/internals/timing"
 )
 
 var (
@@ -77,13 +69,8 @@ type Extension interface {
 
 // Options is the arguments passed to construct an Overlord.
 type Options struct {
-	// PebbleDir is the path to the pebble directory. It must be provided.
+	// PebbleDir is the path to the buildtest directory. It must be provided.
 	PebbleDir string
-	// LayersDir is the path to the layers directory. It defaults to "<PebbleDir>/layers" if empty.
-	LayersDir string
-	// TLSOptions holds the TLS configuration. TLSOptions.TLSDir defaults to
-	// "<PebbleDir>/tls" if empty.
-	TLSOptions tlsstate.Options
 	// RestartHandler is an optional structure to handle restart requests.
 	RestartHandler restart.Handler
 	// ServiceOutput is an optional output for the logging manager.
@@ -119,19 +106,11 @@ type Overlord struct {
 	startOfOperationTime time.Time
 
 	// managers
-	inited        bool
-	startedUp     bool
-	runner        *state.TaskRunner
-	restartMgr    *restart.RestartManager
-	planMgr       *planstate.PlanManager
-	serviceMgr    *servstate.ServiceManager
-	commandMgr    *cmdstate.CommandManager
-	buildTestMgr  *buildteststate.BuildTestManager
-	checkMgr      *checkstate.CheckManager
-	logMgr        *logstate.LogManager
-	tlsMgr        *tlsstate.TLSManager
-	identitiesMgr *identities.Manager
-	pairingMgr    *pairingstate.PairingManager
+	inited       bool
+	startedUp    bool
+	runner       *state.TaskRunner
+	restartMgr   *restart.RestartManager
+	buildTestMgr *buildteststate.BuildTestManager
 
 	extension Extension
 }
@@ -196,74 +175,8 @@ func New(opts *Options) (*Overlord, error) {
 	o.restartMgr = restartMgr
 	o.stateEng.AddManager(restartMgr)
 
-	layersDir := opts.LayersDir
-	if layersDir == "" {
-		layersDir = filepath.Join(opts.PebbleDir, "layers")
-	}
-	o.planMgr, err = planstate.NewManager(layersDir)
-	if err != nil {
-		return nil, fmt.Errorf("cannot create plan manager: %w", err)
-	}
-	o.stateEng.AddManager(o.planMgr)
-
-	tlsOpts := opts.TLSOptions
-	if tlsOpts.TLSDir == "" {
-		tlsOpts.TLSDir = filepath.Join(opts.PebbleDir, "tls")
-	}
-	o.tlsMgr = tlsstate.NewManager(&tlsOpts)
-	o.stateEng.AddManager(o.tlsMgr)
-
-	o.identitiesMgr, err = identities.NewManager(s)
-	if err != nil {
-		return nil, fmt.Errorf("cannot create identities manager: %w", err)
-	}
-	o.stateEng.AddManager(o.identitiesMgr)
-
-	o.pairingMgr, err = pairingstate.NewManager(s, o.identitiesMgr)
-	if err != nil {
-		return nil, fmt.Errorf("cannot create pairing manager: %w", err)
-	}
-	o.stateEng.AddManager(o.pairingMgr)
-	o.planMgr.AddChangeListener(o.pairingMgr.PlanChanged)
-
-	o.logMgr = logstate.NewLogManager()
-
-	o.serviceMgr, err = servstate.NewManager(
-		s,
-		o.runner,
-		opts.ServiceOutput,
-		opts.RestartHandler,
-		o.logMgr)
-	if err != nil {
-		return nil, fmt.Errorf("cannot create service manager: %w", err)
-	}
-
-	// Tell service manager about plan updates.
-	o.planMgr.AddChangeListener(o.serviceMgr.PlanChanged)
-
-	o.stateEng.AddManager(o.serviceMgr)
-	// The log manager should be stopped after the service manager, because
-	// ServiceManager.Stop closes the service ring buffers, which signals to the
-	// log manager that it's okay to stop log forwarding.
-	o.stateEng.AddManager(o.logMgr)
-
-	o.commandMgr = cmdstate.NewManager(o.runner)
-	o.stateEng.AddManager(o.commandMgr)
-
 	o.buildTestMgr = buildteststate.NewManager(o.pebbleDir, o.runner)
 	o.stateEng.AddManager(o.buildTestMgr)
-
-	o.checkMgr = checkstate.NewManager(s, o.runner, o.planMgr)
-	o.stateEng.AddManager(o.checkMgr)
-
-	// Tell check manager about plan updates.
-	o.planMgr.AddChangeListener(o.checkMgr.PlanChanged)
-
-	// Tell log manager about plan updates.
-	o.planMgr.AddChangeListener(o.logMgr.PlanChanged)
-
-	// Tell service manager about check failures.
-	o.checkMgr.NotifyCheckFailed(o.serviceMgr.CheckFailed)
 
 	if o.extension != nil {
 		extraManagers, err := o.extension.ExtraManagers(o)
@@ -279,14 +192,6 @@ func New(opts *Options) (*Overlord, error) {
 	// because TaskRunner runs all the tasks required by the managers that ran
 	// before it.
 	o.stateEng.AddManager(o.runner)
-
-	// Load the plan from the Pebble layers directory (which may be missing
-	// or have no layers, resulting in an empty plan), and propagate PlanChanged
-	// notifications to all notification subscribers.
-	err = o.planMgr.Load(nil)
-	if err != nil {
-		return nil, fmt.Errorf("cannot load plan: %w", err)
-	}
 
 	o.loopTomb.Go(o.loop)
 	return o, nil
@@ -507,8 +412,6 @@ func (o *Overlord) loop() error {
 			st.Lock()
 			st.Prune(o.startOfOperationTime, pruneWait, abortWait, pruneMaxChanges, pruneMaxNotices)
 			st.Unlock()
-			serviceMgr := o.ServiceManager()
-			serviceMgr.Prune(pruneWait, pruneMaxInactiveServices)
 		}
 	}
 }
@@ -642,51 +545,10 @@ func (o *Overlord) RestartManager() *restart.RestartManager {
 	return o.restartMgr
 }
 
-// ServiceManager returns the service manager responsible for services
-// under the overlord.
-func (o *Overlord) ServiceManager() *servstate.ServiceManager {
-	return o.serviceMgr
-}
-
-// CommandManager returns the command manager responsible for executing
-// commands under the overlord.
-func (o *Overlord) CommandManager() *cmdstate.CommandManager {
-	return o.commandMgr
-}
-
 // BuildTestManager returns the build-test manager responsible for building
 // source and running tests under the overlord.
 func (o *Overlord) BuildTestManager() *buildteststate.BuildTestManager {
 	return o.buildTestMgr
-}
-
-// CheckManager returns the check manager responsible for running health
-// checks under the overlord.
-func (o *Overlord) CheckManager() *checkstate.CheckManager {
-	return o.checkMgr
-}
-
-// PlanManager returns the plan manager responsible for managing the global
-// system configuration
-func (o *Overlord) PlanManager() *planstate.PlanManager {
-	return o.planMgr
-}
-
-// TLSManager returns the TLS manager responsible for managing
-// TLS keypairs for HTTPS connections.
-func (o *Overlord) TLSManager() *tlsstate.TLSManager {
-	return o.tlsMgr
-}
-
-// IdentitiesManager returns the manager responsible for managing client
-// identities.
-func (o *Overlord) IdentitiesManager() *identities.Manager {
-	return o.identitiesMgr
-}
-
-// PairingManager returns the manager that handles client pairing.
-func (o *Overlord) PairingManager() *pairingstate.PairingManager {
-	return o.pairingMgr
 }
 
 // Fake creates an Overlord without any managers and with a backend
@@ -709,7 +571,6 @@ func FakeWithState(handleRestart func(restart.RestartType)) *Overlord {
 	s := state.New(fakeBackend{o: o})
 	o.stateEng = NewStateEngine(s)
 	o.runner = state.NewTaskRunner(s)
-	o.serviceMgr, _ = servstate.NewManager(s, o.runner, nil, nil, nil)
 	return o
 }
 

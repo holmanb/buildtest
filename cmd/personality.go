@@ -15,13 +15,13 @@
 package cmd
 
 // ProgramName represents the name of the application binary.
-var ProgramName string = "pebble"
+var ProgramName string = "buildtest"
 
 // DisplayName represents the user-facing name of the application.
-var DisplayName string = "Pebble"
+var DisplayName string = "Buildtest"
 
-// DefaultDir is the Pebble directory used if $PEBBLE is not set.
-var DefaultDir string = "/var/lib/pebble/default"
+// DefaultDir is the Buildtest directory used if $BUILDTEST is not set.
+var DefaultDir string = "/var/lib/buildtest/default"
 
-// StateFile is the file name of the state file in pebble dir.
-var StateFile string = ".pebble.state"
+// StateFile is the file name of the state file in the buildtest dir.
+var StateFile string = ".buildtest.state"

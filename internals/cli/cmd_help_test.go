@@ -17,31 +17,31 @@ package cli_test
 import (
 	. "gopkg.in/check.v1"
 
-	"github.com/canonical/pebble/internals/cli"
+	"github.com/holmanb/buildtest/internals/cli"
 )
 
 func (s *PebbleSuite) TestHelpCommand(c *C) {
-	restore := fakeArgs("pebble", "help")
+	restore := fakeArgs("buildtest", "help")
 	defer restore()
 
 	err := cli.RunMain()
 	c.Assert(err, Equals, nil)
-	c.Check(s.Stdout(), Matches, "(?s)Pebble lets you control services.*Commands can be classified as follows.*")
+	c.Check(s.Stdout(), Matches, "(?s)Buildtest lets you build source and run tests.*Commands can be classified as follows.*")
 	c.Check(s.Stderr(), Equals, "")
 }
 
 func (s *PebbleSuite) TestHelpAll(c *C) {
-	restore := fakeArgs("pebble", "help", "--all")
+	restore := fakeArgs("buildtest", "help", "--all")
 	defer restore()
 
 	err := cli.RunMain()
 	c.Assert(err, Equals, nil)
-	c.Check(s.Stdout(), Matches, "(?s)Pebble lets you control services.*run.*help.*version.*warnings.*")
+	c.Check(s.Stdout(), Matches, "(?s)Buildtest lets you build source and run tests.*run.*help.*version.*changes.*build-test.*")
 	c.Check(s.Stderr(), Equals, "")
 }
 
 func (s *PebbleSuite) TestHelpAllWithCommand(c *C) {
-	restore := fakeArgs("pebble", "help", "help", "--all")
+	restore := fakeArgs("buildtest", "help", "help", "--all")
 	defer restore()
 
 	err := cli.RunMain()
@@ -51,78 +51,78 @@ func (s *PebbleSuite) TestHelpAllWithCommand(c *C) {
 }
 
 func (s *PebbleSuite) TestHelpMan(c *C) {
-	restore := fakeArgs("pebble", "help", "--man")
+	restore := fakeArgs("buildtest", "help", "--man")
 	defer restore()
 
 	err := cli.RunMain()
 	c.Assert(err, Equals, nil)
-	c.Check(s.Stdout(), Matches, `(?s)\.TH pebble 8.*\.SH NAME.*pebble \\- System and service manager.*`)
+	c.Check(s.Stdout(), Matches, `(?s)\.TH buildtest 8.*\.SH NAME.*buildtest \\- Build and test daemon.*`)
 	c.Check(s.Stderr(), Equals, "")
 }
 
 func (s *PebbleSuite) TestHelpOption(c *C) {
-	restore := fakeArgs("pebble", "--help")
+	restore := fakeArgs("buildtest", "--help")
 	defer restore()
 
 	err := cli.RunMain()
 	c.Assert(err, Equals, nil)
-	c.Check(s.Stdout(), Matches, "(?s)Pebble lets you control services.*Commands can be classified as follows.*")
+	c.Check(s.Stdout(), Matches, "(?s)Buildtest lets you build source and run tests.*Commands can be classified as follows.*")
 	c.Check(s.Stderr(), Equals, "")
 }
 
 func (s *PebbleSuite) TestHelpWithCommand(c *C) {
-	restore := fakeArgs("pebble", "help", "help")
+	restore := fakeArgs("buildtest", "help", "help")
 	defer restore()
 
 	err := cli.RunMain()
 	c.Assert(err, Equals, nil)
-	c.Check(s.Stdout(), Matches, "(?s)Usage.*pebble help.*The help command.*help command options.*")
+	c.Check(s.Stdout(), Matches, "(?s)Usage.*buildtest help.*The help command.*help command options.*")
 	c.Check(s.Stderr(), Equals, "")
 }
 
 func (s *PebbleSuite) TestHelpWithUnknownCommand(c *C) {
-	restore := fakeArgs("pebble", "help", "dachshund")
+	restore := fakeArgs("buildtest", "help", "dachshund")
 	defer restore()
 
 	err := cli.RunMain()
-	c.Assert(err, ErrorMatches, `unknown command "dachshund", see 'pebble help'`)
+	c.Assert(err, ErrorMatches, `unknown command "dachshund", see 'buildtest help'`)
 	c.Check(s.Stdout(), Equals, "")
 	c.Check(s.Stderr(), Equals, "")
 }
 
 func (s *PebbleSuite) TestHelpWithUnknownSubcommand(c *C) {
-	restore := fakeArgs("pebble", "help", "add", "dachshund")
+	restore := fakeArgs("buildtest", "help", "changes", "dachshund")
 	defer restore()
 
 	err := cli.RunMain()
-	c.Assert(err, ErrorMatches, `unknown command "dachshund", see 'pebble help add'`)
+	c.Assert(err, ErrorMatches, `unknown command "dachshund", see 'buildtest help changes'`)
 	c.Check(s.Stdout(), Equals, "")
 	c.Check(s.Stderr(), Equals, "")
 }
 
 func (s *PebbleSuite) TestCommandWithHelpOption(c *C) {
-	restore := fakeArgs("pebble", "help", "--help")
+	restore := fakeArgs("buildtest", "help", "--help")
 	defer restore()
 
 	err := cli.RunMain()
 	c.Assert(err, Equals, nil)
-	c.Check(s.Stdout(), Matches, "(?s)Usage.*pebble help.*The help command.*help command options.*")
+	c.Check(s.Stdout(), Matches, "(?s)Usage.*buildtest help.*The help command.*help command options.*")
 	c.Check(s.Stderr(), Equals, "")
 }
 
 func (s *PebbleSuite) TestAddHelpCategory(c *C) {
-	restore := fakeArgs("pebble")
+	restore := fakeArgs("buildtest")
 	defer restore()
 
 	cli.HelpCategories = append(cli.HelpCategories, cli.HelpCategory{
 		Label:       "Test category",
 		Description: "Test description",
-		Commands:    []string{"run", "logs"},
+		Commands:    []string{"run", "tasks"},
 	})
 
 	err := cli.RunMain()
 	c.Assert(err, Equals, nil)
 
-	c.Check(s.Stdout(), Matches, "(?s).*Test category: run, logs\n.*")
+	c.Check(s.Stdout(), Matches, "(?s).*Test category: run, tasks\n.*")
 	c.Check(s.Stderr(), Equals, "")
 }

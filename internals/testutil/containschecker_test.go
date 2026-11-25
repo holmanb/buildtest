@@ -19,7 +19,7 @@ import (
 
 	"gopkg.in/check.v1"
 
-	. "github.com/canonical/pebble/internals/testutil"
+	. "github.com/holmanb/buildtest/internals/testutil"
 )
 
 type containsCheckerSuite struct{}

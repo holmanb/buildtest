@@ -19,8 +19,8 @@ package overlord_test
 import (
 	. "gopkg.in/check.v1"
 
-	"github.com/canonical/pebble/internals/overlord"
-	"github.com/canonical/pebble/internals/testutil"
+	"github.com/holmanb/buildtest/internals/overlord"
+	"github.com/holmanb/buildtest/internals/testutil"
 )
 
 type mgrsSuite struct {

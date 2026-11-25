@@ -19,62 +19,38 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/canonical/go-flags"
 
-	"github.com/canonical/pebble/client"
-	"github.com/canonical/pebble/cmd"
-	"github.com/canonical/pebble/internals/daemon"
-	"github.com/canonical/pebble/internals/idkey"
-	"github.com/canonical/pebble/internals/logger"
-	"github.com/canonical/pebble/internals/overlord"
-	"github.com/canonical/pebble/internals/overlord/pairingstate"
-	"github.com/canonical/pebble/internals/overlord/tlsstate"
-	"github.com/canonical/pebble/internals/plan"
-	"github.com/canonical/pebble/internals/reaper"
-	"github.com/canonical/pebble/internals/systemd"
-	"github.com/canonical/pebble/internals/workloads"
+	"github.com/holmanb/buildtest/cmd"
+	"github.com/holmanb/buildtest/internals/daemon"
+	"github.com/holmanb/buildtest/internals/logger"
+	"github.com/holmanb/buildtest/internals/overlord"
+	"github.com/holmanb/buildtest/internals/reaper"
+	"github.com/holmanb/buildtest/internals/systemd"
 )
 
-const cmdRunSummary = "Run the service manager environment"
+const cmdRunSummary = "Run the build-test daemon"
 const cmdRunDescription = `
-The run command starts {{.DisplayName}} and runs the configured environment.
-
-Additional arguments may be provided to the service command with the --args
-option, which must be terminated with ";" unless there are no further program
-options. These arguments are appended to the end of the service command, and
-replace any default arguments defined in the service plan. For example:
-
-{{.ProgramName}} run --args myservice --port 8080 \; --hold
+The run command starts {{.DisplayName}} and its HTTP API.
 `
 
 type sharedRunEnterOpts struct {
-	CreateDirs bool       `long:"create-dirs"`
-	Hold       bool       `long:"hold"`
-	HTTP       string     `long:"http"`
-	HTTPS      string     `long:"https"`
-	Verbose    bool       `short:"v" long:"verbose"`
-	Args       [][]string `long:"args" terminator:";"`
-	Identities string     `long:"identities"`
+	CreateDirs bool   `long:"create-dirs"`
+	HTTP       string `long:"http"`
+	Verbose    bool   `short:"v" long:"verbose"`
 }
 
 var sharedRunEnterArgsHelp = map[string]string{
 	"--create-dirs": "Create {{.DisplayName}} directory on startup if it doesn't exist",
-	"--hold":        "Do not start default services automatically",
-	"--http":        `Start HTTP API listening on this address in "<address>:port" format (for example, ":4000", "192.0.2.0:4000", "[2001:db8::1]:4000") (also PEBBLE_HTTP)`,
-	"--https":       `Start HTTPS API listening on this address in "<address>:port" format (for example, ":8443", "192.0.2.0:8443", "[2001:db8::1]:8443") (also PEBBLE_HTTPS)`,
-	"--verbose":     "Log all output from services to stdout (also PEBBLE_VERBOSE=1)",
-	"--args":        "Provide additional arguments to a service",
-	"--identities":  "Seed identities from file (like update-identities --replace)",
+	"--http":        `Start HTTP API listening on this address in "<address>:port" format (for example, ":4000", "192.0.2.0:4000", "[2001:db8::1]:4000") (also BUILDTEST_HTTP)`,
+	"--verbose":     "Log all output to stdout (also BUILDTEST_VERBOSE=1)",
 }
 
 type cmdRun struct {
-	client *client.Client
-
 	socketPath string
 	pebbleDir  string
 
@@ -89,7 +65,6 @@ func init() {
 		ArgsHelp:    sharedRunEnterArgsHelp,
 		New: func(opts *CmdOptions) flags.Commander {
 			return &cmdRun{
-				client:     opts.Client,
 				socketPath: opts.SocketPath,
 				pebbleDir:  opts.PebbleDir,
 			}
@@ -98,11 +73,10 @@ func init() {
 }
 
 // newCmdRun creates a cmdRun with the given options, for testing.
-func newCmdRun(http, https string) *cmdRun {
+func newCmdRun(http string) *cmdRun {
 	return &cmdRun{
 		sharedRunEnterOpts: sharedRunEnterOpts{
-			HTTP:  http,
-			HTTPS: https,
+			HTTP: http,
 		},
 	}
 }
@@ -118,33 +92,12 @@ func (rcmd *cmdRun) Execute(args []string) error {
 }
 
 // httpAddress returns the HTTP address for the daemon, using the --http
-// flag if set, otherwise falling back to the PEBBLE_HTTP environment variable.
+// flag if set, otherwise falling back to the BUILDTEST_HTTP environment variable.
 func (rcmd *cmdRun) httpAddress() string {
 	if rcmd.HTTP != "" {
 		return rcmd.HTTP
 	}
-	return os.Getenv("PEBBLE_HTTP")
-}
-
-// httpsAddress returns the HTTPS address for the daemon, using the --https
-// flag if set, otherwise falling back to the PEBBLE_HTTPS environment variable.
-func (rcmd *cmdRun) httpsAddress() string {
-	if rcmd.HTTPS != "" {
-		return rcmd.HTTPS
-	}
-	return os.Getenv("PEBBLE_HTTPS")
-}
-
-// socketClient returns a client that talks to the daemon over its Unix
-// socket, ignoring PEBBLE_BASEURL. The daemon uses this client for its own
-// internal API calls (autostart, waiting for changes, seeding identities),
-// which require admin access; admin access is only granted over concealed
-// transports (Unix socket or HTTPS), so the daemon must always talk to
-// itself over the socket even when an HTTP(S) API is also exposed.
-func (rcmd *cmdRun) socketClient() (*client.Client, error) {
-	return client.New(&client.Config{
-		Socket: rcmd.socketPath,
-	})
+	return os.Getenv("BUILDTEST_HTTP")
 }
 
 func (rcmd *cmdRun) run(ready chan<- func()) {
@@ -206,26 +159,6 @@ func sanityCheck() error {
 	return nil
 }
 
-// setupTLSOptions returns the TLS options for the daemon based on the
-// configured HTTPS address. If HTTPS is not requested no identity key is
-// loaded. If HTTPS is requested, an identity key is loaded (or generated)
-// from pebbleDir; this requires persistent state, so an error is returned
-// when persist is overlord.PersistNever.
-func setupTLSOptions(pebbleDir, httpsAddress string, persist overlord.PersistMode) (tlsstate.Options, error) {
-	if httpsAddress == "" {
-		return tlsstate.Options{}, nil
-	}
-	if persist == overlord.PersistNever {
-		return tlsstate.Options{}, fmt.Errorf("cannot use --https with PEBBLE_PERSIST=never: identity key requires persistent state")
-	}
-	idPath := filepath.Join(pebbleDir, "identity")
-	idSigner, err := idkey.Get(idPath)
-	if err != nil {
-		return tlsstate.Options{}, err
-	}
-	return tlsstate.Options{Signer: idSigner}, nil
-}
-
 func runDaemon(rcmd *cmdRun, ch chan os.Signal, ready chan<- func()) error {
 	err := reaper.Start()
 	if err != nil {
@@ -251,27 +184,17 @@ func runDaemon(rcmd *cmdRun, ch chan os.Signal, ready chan<- func()) error {
 		return err
 	}
 
-	plan.RegisterSectionExtension(workloads.WorkloadsField, &workloads.WorkloadsSectionExtension{})
-	plan.RegisterSectionExtension(pairingstate.PairingField, &pairingstate.SectionExtension{})
-
 	dopts := daemon.Options{
-		Dir:          rcmd.pebbleDir,
-		SocketPath:   rcmd.socketPath,
-		HTTPAddress:  rcmd.httpAddress(),
-		HTTPSAddress: rcmd.httpsAddress(),
+		Dir:         rcmd.pebbleDir,
+		SocketPath:  rcmd.socketPath,
+		HTTPAddress: rcmd.httpAddress(),
 	}
-	if os.Getenv("PEBBLE_VERBOSE") == "1" || rcmd.Verbose {
+	if os.Getenv("BUILDTEST_VERBOSE") == "1" || rcmd.Verbose {
 		dopts.ServiceOutput = os.Stdout
 	}
-	if os.Getenv("PEBBLE_PERSIST") == "never" {
+	if os.Getenv("BUILDTEST_PERSIST") == "never" {
 		dopts.Persist = overlord.PersistNever
 	}
-
-	tlsOpts, err := setupTLSOptions(rcmd.pebbleDir, rcmd.httpsAddress(), dopts.Persist)
-	if err != nil {
-		return err
-	}
-	dopts.TLSOptions = tlsOpts
 
 	d, err := daemon.New(&dopts)
 	if err != nil {
@@ -279,16 +202,6 @@ func runDaemon(rcmd *cmdRun, ch chan os.Signal, ready chan<- func()) error {
 	}
 	if err := d.Init(); err != nil {
 		return err
-	}
-
-	if rcmd.Args != nil {
-		mappedArgs, err := convertArgs(rcmd.Args)
-		if err != nil {
-			return err
-		}
-		if err := d.SetServiceArgs(mappedArgs); err != nil {
-			return err
-		}
 	}
 
 	// Run sanity check now, if anything goes wrong with the
@@ -319,61 +232,14 @@ func runDaemon(rcmd *cmdRun, ch chan os.Signal, ready chan<- func()) error {
 
 	logger.Debugf("activation done in %v", time.Now().Truncate(time.Millisecond).Sub(t0))
 
-	// The daemon talks to itself over the Unix socket for internal API
-	// calls (autostart, waiting for changes, seeding identities). These
-	// require admin access, which is only granted over concealed
-	// transports (Unix socket or HTTPS), so PEBBLE_BASEURL must not
-	// influence the internal client.
-	socketClient, err := rcmd.socketClient()
-	if err != nil {
-		return fmt.Errorf("cannot create internal client: %w", err)
-	}
-	defer socketClient.CloseIdleConnections()
-
-	if rcmd.Identities != "" {
-		identities, err := readIdentities(rcmd.Identities)
-		if err != nil {
-			return fmt.Errorf("cannot read identities: %w", err)
-		}
-		err = socketClient.ReplaceIdentities(identities)
-		if err != nil {
-			return fmt.Errorf("cannot replace identities: %w", err)
-		}
-	}
-
-	// The "stop" channel is used by the "enter" command to stop the daemon.
+	// The "stop" channel is used to stop the daemon externally.
 	var stop chan struct{}
 	if ready != nil {
 		stop = make(chan struct{}, 1)
-	}
-	notifyReady := func() {
-		ready <- func() { close(stop) }
-		close(ready)
-	}
-
-	if !rcmd.Hold {
-		// Start the default services (those configured with startup: enabled).
-		servopts := client.ServiceOptions{}
-		changeID, err := socketClient.AutoStart(&servopts)
-		if err != nil {
-			logger.Noticef("Cannot start default services: %v", err)
-		} else {
-			// Wait for the default services to actually start and then notify
-			// the ready channel (for the "enter" command).
-			go func() {
-				logger.Debugf("Waiting for default services to autostart with change %s.", changeID)
-				_, err := socketClient.WaitChange(changeID, nil)
-				if err != nil {
-					logger.Noticef("Cannot wait for autostart change %s: %v", changeID, err)
-				} else {
-					logger.Noticef("Started default services with change %s.", changeID)
-				}
-				if ready != nil {
-					notifyReady()
-				}
-			}()
+		notifyReady := func() {
+			ready <- func() { close(stop) }
+			close(ready)
 		}
-	} else if ready != nil {
 		notifyReady()
 	}
 
@@ -397,31 +263,7 @@ out:
 		}
 	}
 
-	// Close the client idle connection to the server (self connection) before we
-	// start with the HTTP/HTTPS shutdown process. This will speed up the server
-	// shutdown, and allow the Pebble process to exit faster.
-	socketClient.CloseIdleConnections()
-
 	return d.Stop(ch)
-}
-
-// convert args from [][]string type to map[string][]string
-// and check for empty or duplicated --args usage
-func convertArgs(args [][]string) (map[string][]string, error) {
-	mappedArgs := make(map[string][]string)
-
-	for _, arg := range args {
-		if len(arg) < 1 {
-			return nil, fmt.Errorf("--args requires a service name")
-		}
-		name := arg[0]
-		if _, ok := mappedArgs[name]; ok {
-			return nil, fmt.Errorf("--args provided more than once for %q service", name)
-		}
-		mappedArgs[name] = arg[1:]
-	}
-
-	return mappedArgs, nil
 }
 
 func maybeCopyPebbleDir(destDir, srcDir string) error {

@@ -18,7 +18,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/canonical/pebble/client"
+	"github.com/holmanb/buildtest/client"
 )
 
 type changeIDMixin struct {

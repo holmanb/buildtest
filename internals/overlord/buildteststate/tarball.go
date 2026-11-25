@@ -22,7 +22,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/canonical/pebble/internals/logger"
+	"github.com/holmanb/buildtest/internals/logger"
 )
 
 // extractTarball extracts a gzipped tar archive to the destination directory.

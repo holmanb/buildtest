@@ -13,13 +13,10 @@ import (
 	"golang.org/x/term"
 	. "gopkg.in/check.v1"
 
-	"github.com/canonical/pebble/client"
-	"github.com/canonical/pebble/cmd"
-	"github.com/canonical/pebble/internals/cli"
-	"github.com/canonical/pebble/internals/overlord/pairingstate"
-	"github.com/canonical/pebble/internals/plan"
-	"github.com/canonical/pebble/internals/testutil"
-	"github.com/canonical/pebble/internals/workloads"
+	"github.com/holmanb/buildtest/client"
+	"github.com/holmanb/buildtest/cmd"
+	"github.com/holmanb/buildtest/internals/cli"
+	"github.com/holmanb/buildtest/internals/testutil"
 )
 
 // Hook up check.v1 into the "go test" runner
@@ -47,7 +44,7 @@ func (s *BasePebbleSuite) SetUpTest(c *C) {
 	s.BaseTest.SetUpTest(c)
 
 	s.pebbleDir = c.MkDir()
-	os.Setenv("PEBBLE", s.pebbleDir)
+	os.Setenv("BUILDTEST", s.pebbleDir)
 
 	s.stdin = bytes.NewBuffer(nil)
 	s.stdout = bytes.NewBuffer(nil)
@@ -68,20 +65,18 @@ func (s *BasePebbleSuite) SetUpTest(c *C) {
 	})
 	configHome := c.MkDir()
 	os.Setenv("XDG_CONFIG_HOME", configHome)
-	s.cliStatePath = filepath.Join(configHome, "pebble", "cli.json")
+	s.cliStatePath = filepath.Join(configHome, "buildtest", "cli.json")
 }
 
 func (s *BasePebbleSuite) TearDownTest(c *C) {
-	os.Setenv("PEBBLE", "")
-	os.Setenv("PEBBLE_SOCKET", "")
+	os.Setenv("BUILDTEST", "")
+	os.Setenv("BUILDTEST_SOCKET", "")
 
 	cli.Stdin = os.Stdin
 	cli.Stdout = os.Stdout
 	cli.Stderr = os.Stderr
 	cli.ReadPassword = term.ReadPassword
 
-	plan.UnregisterSectionExtension(workloads.WorkloadsField)
-	plan.UnregisterSectionExtension(pairingstate.PairingField)
 
 	s.BaseTest.TearDownTest(c)
 }
@@ -146,7 +141,7 @@ func (s *PebbleSuite) TestErrorResult(c *C) {
 		fmt.Fprintln(w, `{"type": "error", "result": {"message": "cannot do something"}}`)
 	})
 
-	restore := fakeArgs("pebble", "notices")
+	restore := fakeArgs("buildtest", "changes")
 	defer restore()
 
 	err := cli.RunMain()
@@ -154,37 +149,37 @@ func (s *PebbleSuite) TestErrorResult(c *C) {
 }
 
 func (s *PebbleSuite) TestRunOptionApplyDefaults(c *C) {
-	os.Setenv("PEBBLE", "")
-	os.Setenv("PEBBLE_SOCKET", "")
-	os.Setenv("PEBBLE_BASEURL", "")
+	os.Setenv("BUILDTEST", "")
+	os.Setenv("BUILDTEST_SOCKET", "")
+	os.Setenv("BUILDTEST_BASEURL", "")
 	r := cli.WithDefaultRunOptions(nil)
-	c.Assert(r.PebbleDir, Equals, "/var/lib/pebble/default")
-	c.Assert(r.ClientConfig.Socket, Equals, "/var/lib/pebble/default/.pebble.socket")
+	c.Assert(r.PebbleDir, Equals, "/var/lib/buildtest/default")
+	c.Assert(r.ClientConfig.Socket, Equals, "/var/lib/buildtest/default/.buildtest.socket")
 	c.Assert(r.ClientConfig.BaseURL, Equals, "")
 
-	os.Setenv("PEBBLE", "/foo")
+	os.Setenv("BUILDTEST", "/foo")
 	r = cli.WithDefaultRunOptions(nil)
 	c.Assert(r.PebbleDir, Equals, "/foo")
-	c.Assert(r.ClientConfig.Socket, Equals, "/foo/.pebble.socket")
+	c.Assert(r.ClientConfig.Socket, Equals, "/foo/.buildtest.socket")
 	c.Assert(r.ClientConfig.BaseURL, Equals, "")
 
-	os.Setenv("PEBBLE", "/bar")
-	os.Setenv("PEBBLE_SOCKET", "/path/to/socket")
+	os.Setenv("BUILDTEST", "/bar")
+	os.Setenv("BUILDTEST_SOCKET", "/path/to/socket")
 	r = cli.WithDefaultRunOptions(nil)
 	c.Assert(r.PebbleDir, Equals, "/bar")
 	c.Assert(r.ClientConfig.Socket, Equals, "/path/to/socket")
 	c.Assert(r.ClientConfig.BaseURL, Equals, "")
 
-	os.Setenv("PEBBLE_BASEURL", "http://localhost:4000")
+	os.Setenv("BUILDTEST_BASEURL", "http://localhost:4000")
 	r = cli.WithDefaultRunOptions(nil)
 	c.Assert(r.ClientConfig.BaseURL, Equals, "http://localhost:4000")
 
-	os.Setenv("PEBBLE_BASEURL", "https://192.0.2.1:8443")
+	os.Setenv("BUILDTEST_BASEURL", "https://192.0.2.1:8443")
 	r = cli.WithDefaultRunOptions(nil)
 	c.Assert(r.ClientConfig.BaseURL, Equals, "https://192.0.2.1:8443")
 
 	// Explicit ClientConfig.BaseURL should override env var.
-	os.Setenv("PEBBLE_BASEURL", "http://localhost:4000")
+	os.Setenv("BUILDTEST_BASEURL", "http://localhost:4000")
 	r = cli.WithDefaultRunOptions(&cli.RunOptions{
 		ClientConfig: &client.Config{BaseURL: "https://other:8443"},
 	})
@@ -198,9 +193,9 @@ func (s *BasePebbleSuite) readCLIState(c *C) map[string]any {
 	err = json.Unmarshal(data, &fullState)
 	c.Assert(err, IsNil)
 
-	socketMap, ok := fullState["pebble"].(map[string]any)
+	socketMap, ok := fullState["buildtest"].(map[string]any)
 	if !ok {
-		c.Fatalf("expected socket map, got %#v", fullState["pebble"])
+		c.Fatalf("expected socket map, got %#v", fullState["buildtest"])
 	}
 
 	r := cli.WithDefaultRunOptions(nil)
@@ -214,7 +209,7 @@ func (s *BasePebbleSuite) readCLIState(c *C) map[string]any {
 func (s *BasePebbleSuite) writeCLIState(c *C, st map[string]any) {
 	r := cli.WithDefaultRunOptions(nil)
 	fullState := map[string]any{
-		"pebble": map[string]any{
+		"buildtest": map[string]any{
 			r.ClientConfig.Socket: st,
 		},
 	}

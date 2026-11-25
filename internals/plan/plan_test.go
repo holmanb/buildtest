@@ -28,8 +28,8 @@ import (
 	. "gopkg.in/check.v1"
 	"gopkg.in/yaml.v3"
 
-	"github.com/canonical/pebble/internals/plan"
-	"github.com/canonical/pebble/internals/testutil"
+	"github.com/holmanb/buildtest/internals/plan"
+	"github.com/holmanb/buildtest/internals/testutil"
 )
 
 const (
@@ -414,11 +414,11 @@ var planTests = []planTest{{
 				command: cmd
 	`},
 }, {
-	summary: `Cannot use service name "pebble"`,
-	error:   `cannot use reserved service name "pebble"`,
+	summary: `Cannot use service name "buildtest"`,
+	error:   `cannot use reserved service name "buildtest"`,
 	input: []string{`
 		services:
-			pebble:
+			buildtest:
 				command: cmd
 	`},
 }, {

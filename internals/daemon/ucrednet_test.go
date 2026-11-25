@@ -175,23 +175,23 @@ func (s *ucrednetSuite) TestGetNothing(c *check.C) {
 }
 
 func (s *ucrednetSuite) TestGet(c *check.C) {
-	u, err := ucrednetGet("pid=100;uid=42;socket=/run/.pebble.socket;")
+	u, err := ucrednetGet("pid=100;uid=42;socket=/run/.buildtest.socket;")
 	c.Check(err, check.IsNil)
 	c.Check(u.Pid, check.Equals, int32(100))
 	c.Check(u.Uid, check.Equals, uint32(42))
-	c.Check(u.Socket, check.Equals, "/run/.pebble.socket")
+	c.Check(u.Socket, check.Equals, "/run/.buildtest.socket")
 }
 
 func (s *ucrednetSuite) TestGetSneak(c *check.C) {
-	u, err := ucrednetGet("pid=100;uid=42;socket=/run/.pebble.socket;pid=0;uid=0;socket=/tmp/my.socket")
+	u, err := ucrednetGet("pid=100;uid=42;socket=/run/.buildtest.socket;pid=0;uid=0;socket=/tmp/my.socket")
 	c.Check(err, check.Equals, errNoID)
 	c.Check(u, check.IsNil)
 }
 
 func (s *ucrednetSuite) TestGetWithZeroPid(c *check.C) {
-	u, err := ucrednetGet("pid=0;uid=42;socket=/run/.pebble.socket;")
+	u, err := ucrednetGet("pid=0;uid=42;socket=/run/.buildtest.socket;")
 	c.Check(err, check.IsNil)
 	c.Check(u.Pid, check.Equals, int32(0))
 	c.Check(u.Uid, check.Equals, uint32(42))
-	c.Check(u.Socket, check.Equals, "/run/.pebble.socket")
+	c.Check(u.Socket, check.Equals, "/run/.buildtest.socket")
 }

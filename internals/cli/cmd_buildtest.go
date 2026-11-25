@@ -23,9 +23,9 @@ import (
 	"github.com/canonical/go-flags"
 	"golang.org/x/sys/unix"
 
-	"github.com/canonical/pebble/client"
-	"github.com/canonical/pebble/internals/logger"
-	"github.com/canonical/pebble/internals/ptyutil"
+	"github.com/holmanb/buildtest/client"
+	"github.com/holmanb/buildtest/internals/logger"
+	"github.com/holmanb/buildtest/internals/ptyutil"
 )
 
 const cmdBuildTestSummary = "Build source with snapcraft and run spread tests"

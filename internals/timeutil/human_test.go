@@ -19,7 +19,7 @@ import (
 
 	"gopkg.in/check.v1"
 
-	"github.com/canonical/pebble/internals/timeutil"
+	"github.com/holmanb/buildtest/internals/timeutil"
 )
 
 type humanSuite struct {

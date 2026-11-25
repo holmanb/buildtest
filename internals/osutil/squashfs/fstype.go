@@ -18,7 +18,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/canonical/pebble/internals/osutil"
+	"github.com/holmanb/buildtest/internals/osutil"
 )
 
 var needsFuseImpl = func() bool {

@@ -27,7 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/canonical/pebble/internals/logger"
+	"github.com/holmanb/buildtest/internals/logger"
 )
 
 // A Backend is used by State to checkpoint on every unlock operation

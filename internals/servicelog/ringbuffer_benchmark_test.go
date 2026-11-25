@@ -17,7 +17,7 @@ package servicelog_test
 import (
 	"testing"
 
-	"github.com/canonical/pebble/internals/servicelog"
+	"github.com/holmanb/buildtest/internals/servicelog"
 )
 
 func BenchmarkRingBufferWriteSmall(b *testing.B) {

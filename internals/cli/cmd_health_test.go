@@ -21,7 +21,7 @@ import (
 
 	"gopkg.in/check.v1"
 
-	"github.com/canonical/pebble/internals/cli"
+	"github.com/holmanb/buildtest/internals/cli"
 )
 
 func (s *PebbleSuite) TestHealth(c *check.C) {
@@ -36,7 +36,7 @@ func (s *PebbleSuite) TestHealth(c *check.C) {
 		}`)
 	})
 
-	restore := fakeArgs("pebble", "health")
+	restore := fakeArgs("buildtest", "health")
 	defer restore()
 
 	exitCode := cli.PebbleMain()
@@ -57,7 +57,7 @@ func (s *PebbleSuite) TestHealthLevel(c *check.C) {
 		}`)
 	})
 
-	restore := fakeArgs("pebble", "health", "--level", "alive")
+	restore := fakeArgs("buildtest", "health", "--level", "alive")
 	defer restore()
 
 	exitCode := cli.PebbleMain()
@@ -81,7 +81,7 @@ func (s *PebbleSuite) TestHealthSpecificChecks(c *check.C) {
 		}`)
 	})
 
-	restore := fakeArgs("pebble", "health", "--level", "ready", "chk1", "chk3")
+	restore := fakeArgs("buildtest", "health", "--level", "ready", "chk1", "chk3")
 	defer restore()
 
 	exitCode := cli.PebbleMain()
@@ -91,7 +91,7 @@ func (s *PebbleSuite) TestHealthSpecificChecks(c *check.C) {
 }
 
 func (s *PebbleSuite) TestHealthBadLevel(c *check.C) {
-	restore := fakeArgs("pebble", "health", "--level", "foo")
+	restore := fakeArgs("buildtest", "health", "--level", "foo")
 	defer restore()
 
 	exitCode := cli.PebbleMain()
@@ -109,7 +109,7 @@ func (s *PebbleSuite) TestHealthJSON(c *check.C) {
 		}`)
 	})
 
-	restore := fakeArgs("pebble", "health", "--format", "json")
+	restore := fakeArgs("buildtest", "health", "--format", "json")
 	defer restore()
 
 	exitCode := cli.PebbleMain()
@@ -127,7 +127,7 @@ func (s *PebbleSuite) TestHealthUnhealthyJSON(c *check.C) {
 		}`)
 	})
 
-	restore := fakeArgs("pebble", "health", "--format", "json")
+	restore := fakeArgs("buildtest", "health", "--format", "json")
 	defer restore()
 
 	exitCode := cli.PebbleMain()
@@ -146,7 +146,7 @@ func (s *PebbleSuite) TestHealthYAML(c *check.C) {
 		}`)
 	})
 
-	restore := fakeArgs("pebble", "health", "--format", "yaml")
+	restore := fakeArgs("buildtest", "health", "--format", "yaml")
 	defer restore()
 
 	exitCode := cli.PebbleMain()
@@ -164,7 +164,7 @@ func (s *PebbleSuite) TestHealthUnhealthyYAML(c *check.C) {
 		}`)
 	})
 
-	restore := fakeArgs("pebble", "health", "--format", "yaml")
+	restore := fakeArgs("buildtest", "health", "--format", "yaml")
 	defer restore()
 
 	exitCode := cli.PebbleMain()
@@ -175,7 +175,7 @@ func (s *PebbleSuite) TestHealthUnhealthyYAML(c *check.C) {
 }
 
 func (s *PebbleSuite) TestHealthInvalidFormat(c *check.C) {
-	restore := fakeArgs("pebble", "health", "--format", "foobar")
+	restore := fakeArgs("buildtest", "health", "--format", "foobar")
 	defer restore()
 
 	exitCode := cli.PebbleMain()
@@ -190,7 +190,7 @@ func (s *PebbleSuite) TestHealthInvalidResponseYAML(c *check.C) {
 		fmt.Fprintf(w, `bad`)
 	})
 
-	restore := fakeArgs("pebble", "health", "--format", "yaml")
+	restore := fakeArgs("buildtest", "health", "--format", "yaml")
 	defer restore()
 
 	exitCode := cli.PebbleMain()
@@ -203,7 +203,7 @@ func (s *PebbleSuite) TestHealthInvalidResponseJSON(c *check.C) {
 		fmt.Fprintf(w, `bad`)
 	})
 
-	restore := fakeArgs("pebble", "health", "--format", "json")
+	restore := fakeArgs("buildtest", "health", "--format", "json")
 	defer restore()
 
 	exitCode := cli.PebbleMain()

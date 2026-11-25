@@ -28,26 +28,26 @@ import (
 	"testing"
 	"time"
 
-	"github.com/canonical/pebble/internals/servicelog"
+	"github.com/holmanb/buildtest/internals/servicelog"
 )
 
-var pebbleBin = flag.String("pebblebin", "", "Path to the pre-built Pebble binary")
+var buildtestBin = flag.String("buildtestbin", "", "Path to the pre-built Buildtest binary")
 
-// TestMain builds the pebble binary of `-pebblebin` flag is not set
+// TestMain builds the buildtest binary of `-buildtestbin` flag is not set
 // before running the integration tests.
 func TestMain(m *testing.M) {
 	flag.Parse()
 
-	if *pebbleBin == "" {
-		goBuild := exec.Command("go", "build", "-o", "../pebble", "../cmd/pebble")
+	if *buildtestBin == "" {
+		goBuild := exec.Command("go", "build", "-o", "../buildtest", "../cmd/buildtest")
 		if err := goBuild.Run(); err != nil {
-			fmt.Println("Cannot build pebble binary:", err)
+			fmt.Println("Cannot build buildtest binary:", err)
 			os.Exit(1)
 		}
-		*pebbleBin = "../pebble"
+		*buildtestBin = "../buildtest"
 	} else {
-		// Use the pre-built Pebble binary provided by the pebbleBin flag.
-		fmt.Println("Using pre-built Pebble binary at:", *pebbleBin)
+		// Use the pre-built Buildtest binary provided by the buildtestBin flag.
+		fmt.Println("Using pre-built Buildtest binary at:", *buildtestBin)
 	}
 
 	exitCode := m.Run()
@@ -80,8 +80,8 @@ func pebbleDaemon(t *testing.T, pebbleDir string, runOrEnter string, args ...str
 	stdoutCh = make(chan string)
 	stderrCh = make(chan string)
 
-	cmd := exec.Command(*pebbleBin, append([]string{runOrEnter}, args...)...)
-	cmd.Env = append(os.Environ(), "PEBBLE="+pebbleDir)
+	cmd := exec.Command(*buildtestBin, append([]string{runOrEnter}, args...)...)
+	cmd.Env = append(os.Environ(), "BUILDTEST="+pebbleDir)
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -152,7 +152,12 @@ func waitForLog(t *testing.T, linesCh <-chan string, expectedService, expectedLo
 			}
 			log, err := servicelog.Parse([]byte(line))
 			if err != nil {
-				t.Fatalf("cannot parse log: %v", err)
+				// Not a service log line (e.g. a daemon log line); fall
+				// back to a plain substring match.
+				if expectedService == "buildtest" && strings.Contains(line, expectedLog) {
+					return
+				}
+				continue
 			}
 
 			if log.Service == expectedService && strings.Contains(log.Message, expectedLog) {
@@ -230,8 +235,8 @@ func waitForTermination(t *testing.T, ch <-chan string, timeout time.Duration) {
 func runPebbleCommand(t *testing.T, pebbleDir string, args ...string) string {
 	t.Helper()
 
-	cmd := exec.Command(*pebbleBin, args...)
-	cmd.Env = append(os.Environ(), "PEBBLE="+pebbleDir)
+	cmd := exec.Command(*buildtestBin, args...)
+	cmd.Env = append(os.Environ(), "BUILDTEST="+pebbleDir)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {

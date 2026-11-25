@@ -19,8 +19,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/canonical/pebble/internals/logger"
-	"github.com/canonical/pebble/internals/overlord/state"
+	"github.com/holmanb/buildtest/internals/logger"
+	"github.com/holmanb/buildtest/internals/overlord/state"
 )
 
 func v1GetTaskWebsocket(c *Command, req *http.Request, _ *UserState) Response {
@@ -43,9 +43,6 @@ func v1GetTaskWebsocket(c *Command, req *http.Request, _ *UserState) Response {
 
 	var connect websocketConnectFunc
 	switch task.Kind() {
-	case "exec":
-		commandMgr := c.d.overlord.CommandManager()
-		connect = commandMgr.Connect
 	case "build-test-build", "build-test-run":
 		buildTestMgr := c.d.overlord.BuildTestManager()
 		connect = buildTestMgr.Connect

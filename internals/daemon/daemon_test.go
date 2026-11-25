@@ -17,21 +17,13 @@ package daemon
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
-	"crypto/sha512"
-	"crypto/tls"
-	"crypto/x509"
-	"encoding/base32"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -41,26 +33,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GehirnInc/crypt/sha512_crypt"
 	"github.com/gorilla/mux"
 	. "gopkg.in/check.v1"
 
-	"github.com/canonical/pebble/cmd"
-	"github.com/canonical/pebble/internals/logger"
-	"github.com/canonical/pebble/internals/osutil"
-	"github.com/canonical/pebble/internals/overlord"
-	"github.com/canonical/pebble/internals/overlord/identities"
-	"github.com/canonical/pebble/internals/overlord/pairingstate"
-	"github.com/canonical/pebble/internals/overlord/patch"
-	"github.com/canonical/pebble/internals/overlord/restart"
-	"github.com/canonical/pebble/internals/overlord/servstate"
-	"github.com/canonical/pebble/internals/overlord/standby"
-	"github.com/canonical/pebble/internals/overlord/state"
-	"github.com/canonical/pebble/internals/overlord/tlsstate"
-	"github.com/canonical/pebble/internals/plan"
-	"github.com/canonical/pebble/internals/reaper"
-	"github.com/canonical/pebble/internals/systemd"
-	"github.com/canonical/pebble/internals/testutil"
+	"github.com/holmanb/buildtest/cmd"
+	"github.com/holmanb/buildtest/internals/logger"
+	"github.com/holmanb/buildtest/internals/osutil"
+	"github.com/holmanb/buildtest/internals/overlord"
+	"github.com/holmanb/buildtest/internals/overlord/patch"
+	"github.com/holmanb/buildtest/internals/overlord/restart"
+	"github.com/holmanb/buildtest/internals/overlord/state"
+	"github.com/holmanb/buildtest/internals/reaper"
+	"github.com/holmanb/buildtest/internals/systemd"
+	"github.com/holmanb/buildtest/internals/testutil"
 )
 
 // Hook up check.v1 into the "go test" runner
@@ -72,7 +57,6 @@ type daemonSuite struct {
 	pebbleDir    string
 	socketPath   string
 	httpAddress  string
-	httpsAddress string
 	statePath    string
 	authorized   bool
 	err          error
@@ -82,7 +66,6 @@ type daemonSuite struct {
 var _ = Suite(&daemonSuite{})
 
 func (s *daemonSuite) SetUpTest(c *C) {
-	plan.RegisterSectionExtension(pairingstate.PairingField, &pairingstate.SectionExtension{})
 	err := reaper.Start()
 	if err != nil {
 		c.Fatalf("cannot start reaper: %v", err)
@@ -107,40 +90,17 @@ func (s *daemonSuite) TearDownTest(c *C) {
 	if err != nil {
 		c.Fatalf("cannot stop reaper: %v", err)
 	}
-	plan.UnregisterSectionExtension(pairingstate.PairingField)
 }
 
 func (s *daemonSuite) newDaemon(c *C) *Daemon {
 	d, err := New(&Options{
-		Dir:          s.pebbleDir,
-		SocketPath:   s.socketPath,
-		HTTPAddress:  s.httpAddress,
-		HTTPSAddress: s.httpsAddress,
-		TLSOptions:   tlsstate.Options{Signer: newIDKey(c)},
+		Dir:         s.pebbleDir,
+		SocketPath:  s.socketPath,
+		HTTPAddress: s.httpAddress,
 	})
 	c.Assert(err, IsNil)
 	d.addRoutes()
 	return d
-}
-
-// idkey implements a purely ephemeral tlsstate.IDSigner interface for testing
-// purposes so we do not depend on the idkey package.
-type idkey struct {
-	ed25519.PrivateKey
-}
-
-func newIDKey(c *C) *idkey {
-	k := &idkey{}
-	var err error
-	_, k.PrivateKey, err = ed25519.GenerateKey(rand.Reader)
-	c.Assert(err, IsNil)
-	return k
-}
-
-func (k *idkey) Fingerprint() string {
-	publicBytes := k.PrivateKey.Public().(ed25519.PublicKey)
-	hashBytes := sha512.Sum384(publicBytes)
-	return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(hashBytes[:])
 }
 
 // a Response suitable for testing
@@ -275,8 +235,8 @@ func (s *daemonSuite) TestCommandMethodDispatch(c *C) {
 	cmd.GET = rf
 	cmd.PUT = rf
 	cmd.POST = rf
-	cmd.ReadAccess = UserAccess{}
-	cmd.WriteAccess = UserAccess{}
+	cmd.ReadAccess = OpenAccess{}
+	cmd.WriteAccess = OpenAccess{}
 
 	for _, method := range []string{"GET", "POST", "PUT"} {
 		ctx := context.WithValue(context.Background(), TransportTypeKey{}, TransportTypeUnixSocket)
@@ -286,14 +246,8 @@ func (s *daemonSuite) TestCommandMethodDispatch(c *C) {
 
 		rec := httptest.NewRecorder()
 		cmd.ServeHTTP(rec, req)
-		c.Check(rec.Code, Equals, 401, Commentf(method))
-
-		rec = httptest.NewRecorder()
-		req.RemoteAddr = "pid=100;uid=0;socket=;"
-
-		cmd.ServeHTTP(rec, req)
 		c.Check(handler.lastMethod, Equals, method)
-		c.Check(rec.Code, Equals, 200)
+		c.Check(rec.Code, Equals, 200, Commentf(method))
 	}
 
 	req, err := http.NewRequest("POTATO", "", nil)
@@ -351,288 +305,9 @@ func (s *daemonSuite) TestCommandRestartingState(c *C) {
 	})
 }
 
-func (s *daemonSuite) TestFillsWarnings(c *C) {
-	d := s.newDaemon(c)
-
-	cmd := &Command{d: d, ReadAccess: OpenAccess{}}
-	cmd.GET = func(*Command, *http.Request, *UserState) Response {
-		return SyncResponse(nil)
-	}
-	ctx := context.WithValue(context.Background(), TransportTypeKey{}, TransportTypeUnixSocket)
-	req, err := http.NewRequestWithContext(ctx, "GET", "", nil)
-	c.Assert(err, IsNil)
-	req.RemoteAddr = "pid=100;uid=0;socket=;"
-
-	rec := httptest.NewRecorder()
-	cmd.ServeHTTP(rec, req)
-	c.Check(rec.Code, Equals, 200)
-	var rst struct {
-		LatestWarning *time.Time `json:"latest-warning"`
-	}
-	err = json.Unmarshal(rec.Body.Bytes(), &rst)
-	c.Assert(err, IsNil)
-	c.Check(rst.LatestWarning, IsNil)
-
-	now := time.Now()
-	st := d.overlord.State()
-	st.Lock()
-	st.Warnf("hello world")
-	st.Unlock()
-
-	rec = httptest.NewRecorder()
-	cmd.ServeHTTP(rec, req)
-	c.Check(rec.Code, Equals, 200)
-	err = json.Unmarshal(rec.Body.Bytes(), &rst)
-	c.Assert(err, IsNil)
-	c.Assert(rst.LatestWarning, NotNil)
-	c.Check(rst.LatestWarning.Sub(now) < time.Second, Equals, true)
-}
-
 type accessCheckerTestCase struct {
 	get, put, post int // expected status for each method
 	read, write    AccessChecker
-}
-
-func (s *daemonSuite) testAccessChecker(c *C, tests []accessCheckerTestCase, remoteAddr string) {
-	d := s.newDaemon(c)
-
-	// Add some named identities for testing with.
-	identitiesMgr := d.overlord.IdentitiesManager()
-	d.state.Lock()
-	err := identitiesMgr.ReplaceIdentities(map[string]*identities.Identity{
-		"adminuser": {
-			Access: identities.AdminAccess,
-			Local:  &identities.LocalIdentity{UserID: 1},
-		},
-		"readuser": {
-			Access: identities.ReadAccess,
-			Local:  &identities.LocalIdentity{UserID: 2},
-		},
-		"untrusteduser": {
-			Access: identities.UntrustedAccess,
-			Local:  &identities.LocalIdentity{UserID: 3},
-		},
-	})
-	d.state.Unlock()
-	c.Assert(err, IsNil)
-
-	responseFunc := func(c *Command, r *http.Request, s *UserState) Response {
-		return SyncResponse(true)
-	}
-
-	doTestReqFunc := func(cmd *Command, method string) *httptest.ResponseRecorder {
-		ctx := context.WithValue(context.Background(), TransportTypeKey{}, TransportTypeUnixSocket)
-		req, err := http.NewRequestWithContext(ctx, method, "", nil)
-		c.Assert(err, IsNil)
-		req.RemoteAddr = remoteAddr
-		rec := httptest.NewRecorder()
-		cmd.ServeHTTP(rec, req)
-		return rec
-	}
-
-	for _, t := range tests {
-		cmd := &Command{
-			d: d,
-
-			GET:  responseFunc,
-			PUT:  responseFunc,
-			POST: responseFunc,
-
-			ReadAccess:  t.read,
-			WriteAccess: t.write,
-		}
-
-		comment := Commentf("remoteAddr: %v, read: %T, write: %T", remoteAddr, t.read, t.write)
-
-		c.Check(doTestReqFunc(cmd, "GET").Code, Equals, t.get, comment)
-		c.Check(doTestReqFunc(cmd, "PUT").Code, Equals, t.put, comment)
-		c.Check(doTestReqFunc(cmd, "POST").Code, Equals, t.post, comment)
-	}
-}
-
-func (s *daemonSuite) TestOpenAccess(c *C) {
-	tests := []accessCheckerTestCase{{
-		get:   http.StatusOK,
-		put:   http.StatusOK,
-		post:  http.StatusOK,
-		read:  OpenAccess{},
-		write: OpenAccess{},
-	}, {
-		get:   http.StatusOK,
-		put:   http.StatusUnauthorized,
-		post:  http.StatusUnauthorized,
-		read:  OpenAccess{},
-		write: UserAccess{},
-	}, {
-		get:   http.StatusOK,
-		put:   http.StatusUnauthorized,
-		post:  http.StatusUnauthorized,
-		read:  OpenAccess{},
-		write: AdminAccess{},
-	}, {
-		get:   http.StatusUnauthorized,
-		put:   http.StatusUnauthorized,
-		post:  http.StatusUnauthorized,
-		read:  UserAccess{},
-		write: UserAccess{},
-	}, {
-		get:   http.StatusUnauthorized,
-		put:   http.StatusUnauthorized,
-		post:  http.StatusUnauthorized,
-		read:  UserAccess{},
-		write: AdminAccess{},
-	}, {
-		get:   http.StatusUnauthorized,
-		put:   http.StatusUnauthorized,
-		post:  http.StatusUnauthorized,
-		read:  AdminAccess{},
-		write: AdminAccess{},
-	}}
-
-	s.testAccessChecker(c, tests, "")
-	s.testAccessChecker(c, tests, "pid=100;uid=3;socket=;") // untrusteduser
-}
-
-func (s *daemonSuite) TestUserAccess(c *C) {
-	tests := []accessCheckerTestCase{{
-		get:   http.StatusOK,
-		put:   http.StatusOK,
-		post:  http.StatusOK,
-		read:  OpenAccess{},
-		write: OpenAccess{},
-	}, {
-		get:   http.StatusOK,
-		put:   http.StatusOK,
-		post:  http.StatusOK,
-		read:  OpenAccess{},
-		write: UserAccess{},
-	}, {
-		get:   http.StatusOK,
-		put:   http.StatusUnauthorized,
-		post:  http.StatusUnauthorized,
-		read:  OpenAccess{},
-		write: AdminAccess{},
-	}, {
-		get:   http.StatusOK,
-		put:   http.StatusOK,
-		post:  http.StatusOK,
-		read:  UserAccess{},
-		write: UserAccess{},
-	}, {
-		get:   http.StatusOK,
-		put:   http.StatusUnauthorized,
-		post:  http.StatusUnauthorized,
-		read:  UserAccess{},
-		write: AdminAccess{},
-	}, {
-		get:   http.StatusUnauthorized,
-		put:   http.StatusUnauthorized,
-		post:  http.StatusUnauthorized,
-		read:  AdminAccess{},
-		write: AdminAccess{},
-	}}
-
-	s.testAccessChecker(c, tests, "pid=100;uid=42;socket=;")
-	s.testAccessChecker(c, tests, "pid=100;uid=2;socket=;") // readuser
-}
-
-func (s *daemonSuite) TestAdminAccess(c *C) {
-	tests := []accessCheckerTestCase{{
-		get:   http.StatusOK,
-		put:   http.StatusOK,
-		post:  http.StatusOK,
-		read:  OpenAccess{},
-		write: OpenAccess{},
-	}, {
-		get:   http.StatusOK,
-		put:   http.StatusOK,
-		post:  http.StatusOK,
-		read:  OpenAccess{},
-		write: UserAccess{},
-	}, {
-		get:   http.StatusOK,
-		put:   http.StatusOK,
-		post:  http.StatusOK,
-		read:  OpenAccess{},
-		write: AdminAccess{},
-	}, {
-		get:   http.StatusOK,
-		put:   http.StatusOK,
-		post:  http.StatusOK,
-		read:  UserAccess{},
-		write: UserAccess{},
-	}, {
-		get:   http.StatusOK,
-		put:   http.StatusOK,
-		post:  http.StatusOK,
-		read:  UserAccess{},
-		write: AdminAccess{},
-	}, {
-		get:   http.StatusOK,
-		put:   http.StatusOK,
-		post:  http.StatusOK,
-		read:  AdminAccess{},
-		write: AdminAccess{},
-	}}
-
-	s.testAccessChecker(c, tests, "pid=100;uid=0;socket=;")
-	s.testAccessChecker(c, tests, "pid=100;uid=1;socket=;") // adminuser
-	s.testAccessChecker(c, tests, fmt.Sprintf("pid=100;uid=%d;socket=;", os.Getuid()))
-}
-
-func (s *daemonSuite) TestDefaultUcredUsers(c *C) {
-	d := s.newDaemon(c)
-
-	var userSeen *UserState
-	cmd := &Command{
-		d: d,
-		GET: func(_ *Command, _ *http.Request, u *UserState) Response {
-			userSeen = u
-			return SyncResponse(true)
-		},
-		ReadAccess: UserAccess{},
-	}
-
-	// Admin access for UID 0.
-	ctx := context.WithValue(context.Background(), TransportTypeKey{}, TransportTypeUnixSocket)
-	req, err := http.NewRequestWithContext(ctx, "GET", "", nil)
-	c.Assert(err, IsNil)
-	req.RemoteAddr = "pid=100;uid=0;socket=;"
-	rec := httptest.NewRecorder()
-	cmd.ServeHTTP(rec, req)
-	c.Check(rec.Code, Equals, http.StatusOK)
-	c.Assert(userSeen, NotNil)
-	c.Check(userSeen.Access, Equals, identities.AdminAccess)
-	c.Assert(userSeen.UID, NotNil)
-	c.Check(*userSeen.UID, Equals, uint32(0))
-
-	// Admin access for UID == daemon UID.
-	userSeen = nil
-	ctx = context.WithValue(context.Background(), TransportTypeKey{}, TransportTypeUnixSocket)
-	req, err = http.NewRequestWithContext(ctx, "GET", "", nil)
-	c.Assert(err, IsNil)
-	req.RemoteAddr = fmt.Sprintf("pid=100;uid=%d;socket=;", os.Getuid())
-	rec = httptest.NewRecorder()
-	cmd.ServeHTTP(rec, req)
-	c.Check(rec.Code, Equals, http.StatusOK)
-	c.Assert(userSeen, NotNil)
-	c.Check(userSeen.Access, Equals, identities.AdminAccess)
-	c.Assert(userSeen.UID, NotNil)
-	c.Check(*userSeen.UID, Equals, uint32(os.Getuid()))
-
-	// Read access for UID not 0 and not daemon UID.
-	userSeen = nil
-	ctx = context.WithValue(context.Background(), TransportTypeKey{}, TransportTypeUnixSocket)
-	req, err = http.NewRequestWithContext(ctx, "GET", "", nil)
-	c.Assert(err, IsNil)
-	req.RemoteAddr = fmt.Sprintf("pid=100;uid=%d;socket=;", os.Getuid()+1)
-	rec = httptest.NewRecorder()
-	cmd.ServeHTTP(rec, req)
-	c.Check(rec.Code, Equals, http.StatusOK)
-	c.Assert(userSeen, NotNil)
-	c.Check(userSeen.Access, Equals, identities.ReadAccess)
-	c.Assert(userSeen.UID, NotNil)
-	c.Check(*userSeen.UID, Equals, uint32(os.Getuid()+1))
 }
 
 func (s *daemonSuite) TestAddRoutes(c *C) {
@@ -1098,132 +773,6 @@ func (s *daemonSuite) TestRestartExpectedRebootGiveUp(c *C) {
 	c.Check(st.Get("daemon-system-restart-tentative", &v), testutil.ErrorIs, state.ErrNoState)
 }
 
-func (s *daemonSuite) TestRestartIntoSocketModeNoNewChanges(c *C) {
-	notifySocket := filepath.Join(c.MkDir(), "notify.socket")
-	os.Setenv("NOTIFY_SOCKET", notifySocket)
-	defer os.Setenv("NOTIFY_SOCKET", "")
-
-	restore := standby.FakeStandbyWait(5 * time.Millisecond)
-	defer restore()
-
-	d := s.newDaemon(c)
-	makeDaemonListeners(c, d)
-
-	c.Assert(d.Start(), IsNil)
-
-	// pretend some ensure happened
-	for range 5 {
-		c.Check(d.overlord.StateEngine().Ensure(), IsNil)
-		time.Sleep(5 * time.Millisecond)
-	}
-
-	c.Assert(d.standbyOpinions.CanStandby(), Equals, false)
-	f, _ := os.Create(notifySocket)
-	f.Close()
-	c.Assert(d.standbyOpinions.CanStandby(), Equals, true)
-
-	select {
-	case <-d.Dying():
-		// exit the loop
-	case <-time.After(15 * time.Second):
-		c.Errorf("daemon did not stop after 15s")
-	}
-	err := d.Stop(nil)
-	c.Check(err, Equals, ErrRestartSocket)
-	c.Check(d.requestedRestart, Equals, restart.RestartSocket)
-}
-
-func (s *daemonSuite) TestRestartIntoSocketModePendingChanges(c *C) {
-	os.Setenv("NOTIFY_SOCKET", c.MkDir())
-	defer os.Setenv("NOTIFY_SOCKET", "")
-
-	restore := standby.FakeStandbyWait(5 * time.Millisecond)
-	defer restore()
-
-	d := s.newDaemon(c)
-	makeDaemonListeners(c, d)
-
-	st := d.overlord.State()
-
-	c.Assert(d.Start(), IsNil)
-	// pretend some ensure happened
-	for range 5 {
-		c.Check(d.overlord.StateEngine().Ensure(), IsNil)
-		time.Sleep(5 * time.Millisecond)
-	}
-
-	select {
-	case <-d.Dying():
-		// Pretend we got change while shutting down, this can
-		// happen when e.g. the user requested a `snap install
-		// foo` at the same time as the code in the overlord
-		// checked that it can go into socket activated
-		// mode. I.e. the daemon was processing the request
-		// but no change was generated at the time yet.
-		st.Lock()
-		chg := st.NewChange("fake-install", "fake install some snap")
-		chg.AddTask(st.NewTask("fake-install-task", "fake install task"))
-		chgStatus := chg.Status()
-		st.Unlock()
-		// ensure our change is valid and ready
-		c.Check(chgStatus, Equals, state.DoStatus)
-	case <-time.After(5 * time.Second):
-		c.Errorf("daemon did not stop after 5s")
-	}
-	// when the daemon got a pending change it just restarts
-	err := d.Stop(nil)
-	c.Check(err, IsNil)
-	c.Check(d.requestedRestart, Equals, restart.RestartDaemon)
-}
-
-func (s *daemonSuite) TestRestartServiceFailure(c *C) {
-	writeTestLayer(s.pebbleDir, `
-services:
-    test1:
-        override: replace
-        command: /bin/sh -c 'sleep 1.5; exit 1'
-        on-failure: shutdown
-`)
-	d := s.newDaemon(c)
-	err := d.Init()
-	c.Assert(err, IsNil)
-	c.Assert(d.Start(), IsNil)
-
-	// Start the test service.
-	payload := bytes.NewBufferString(`{"action": "start", "services": ["test1"]}`)
-	req, err := http.NewRequest("POST", "/v1/services", payload)
-	c.Assert(err, IsNil)
-	rsp := v1PostServices(apiCmd("/v1/services"), req, nil).(*resp)
-	rec := httptest.NewRecorder()
-	rsp.ServeHTTP(rec, req)
-	c.Check(rec.Result().StatusCode, Equals, 202)
-
-	// We have to wait for it be in running state.
-	for i := 0; ; i++ {
-		if i >= 25 {
-			c.Fatalf("timed out waiting for service to start")
-		}
-		d.state.Lock()
-		change := d.state.Change(rsp.Change)
-		d.state.Unlock()
-		if change != nil && change.IsReady() {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-
-	// Wait for daemon to be shut down by the failed service.
-	select {
-	case <-d.Dying():
-	case <-time.After(2 * time.Second):
-		c.Fatalf("timed out waiting for ")
-	}
-
-	// Ensure it returned a service-failure error.
-	err = d.Stop(nil)
-	c.Assert(err, Equals, ErrRestartServiceFailure)
-}
-
 func (s *daemonSuite) TestRebootExternal(c *C) {
 	oldRebootWaitTimeout := rebootWaitTimeout
 	defer func() {
@@ -1274,18 +823,6 @@ func (s *daemonSuite) TestRebootExternal(c *C) {
 	st.Lock()
 	restart.ClearReboot(st)
 	st.Unlock()
-}
-
-func (s *daemonSuite) TestConnTrackerCanShutdown(c *C) {
-	ct := &connTracker{conns: make(map[net.Conn]struct{})}
-	c.Check(ct.CanStandby(), Equals, true)
-
-	con := &net.IPConn{}
-	ct.trackConn(con, http.StateActive)
-	c.Check(ct.CanStandby(), Equals, false)
-
-	ct.trackConn(con, http.StateIdle)
-	c.Check(ct.CanStandby(), Equals, true)
 }
 
 func doTestReq(c *C, cmd *Command, method string) *httptest.ResponseRecorder {
@@ -1368,7 +905,7 @@ func (s *daemonSuite) TestHTTPAPI(c *C) {
 	c.Assert(err, IsNil)
 	response, err = http.DefaultClient.Do(request)
 	c.Assert(err, IsNil)
-	c.Assert(response.StatusCode, Equals, http.StatusUnauthorized)
+	c.Assert(response.StatusCode, Equals, http.StatusNotFound)
 
 	err = d.Stop(nil)
 	c.Assert(err, IsNil)
@@ -1381,277 +918,6 @@ func (s *daemonSuite) TestHTTPAPI(c *C) {
 
 	ensureSecurityLog(c, logBuf.String(), "WARN", fmt.Sprintf("sys_startup:%d", os.Getuid()), "Starting daemon")
 	ensureSecurityLog(c, logBuf.String(), "WARN", fmt.Sprintf("sys_shutdown:%d", os.Getuid()), "Shutting down daemon")
-}
-
-func (s *daemonSuite) TestStopRunning(c *C) {
-	// Start the daemon.
-	writeTestLayer(s.pebbleDir, `
-services:
-    test1:
-        override: replace
-        command: sleep 10
-`)
-	d := s.newDaemon(c)
-	err := d.Init()
-	c.Assert(err, IsNil)
-	c.Assert(d.Start(), IsNil)
-
-	// Start the test service.
-	payload := bytes.NewBufferString(`{"action": "start", "services": ["test1"]}`)
-	req, err := http.NewRequest("POST", "/v1/services", payload)
-	c.Assert(err, IsNil)
-	rsp := v1PostServices(apiCmd("/v1/services"), req, nil).(*resp)
-	rec := httptest.NewRecorder()
-	rsp.ServeHTTP(rec, req)
-	c.Check(rec.Result().StatusCode, Equals, 202)
-
-	// We have to wait for it be in running state for StopRunning to stop it.
-	for i := 0; ; i++ {
-		if i >= 25 {
-			c.Fatalf("timed out waiting for service to start")
-		}
-		d.state.Lock()
-		change := d.state.Change(rsp.Change)
-		d.state.Unlock()
-		if change != nil && change.IsReady() {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-
-	// Stop the daemon (which should shut down the service manager and stop services).
-	err = d.Stop(nil)
-	c.Assert(err, IsNil)
-
-	// Ensure the "stop" change was created, along with its "stop" tasks.
-	d.state.Lock()
-	defer d.state.Unlock()
-	changes := d.state.Changes()
-	var change *state.Change
-	for _, ch := range changes {
-		if ch.Kind() == "stop" {
-			change = ch
-		}
-	}
-	if change == nil {
-		c.Fatalf("stop change not found")
-	}
-	c.Check(change.Status(), Equals, state.DoneStatus)
-	tasks := change.Tasks()
-	c.Assert(tasks, HasLen, 1)
-	c.Check(tasks[0].Kind(), Equals, "stop")
-}
-
-func (s *daemonSuite) TestStopWithinOkayDelay(c *C) {
-	// Start the daemon.
-	writeTestLayer(s.pebbleDir, `
-services:
-    test1:
-        override: replace
-        command: sleep 10
-`)
-	d := s.newDaemon(c)
-	err := d.Init()
-	c.Assert(err, IsNil)
-	c.Assert(d.Start(), IsNil)
-
-	// Start the test service.
-	payload := bytes.NewBufferString(`{"action": "start", "services": ["test1"]}`)
-	req, err := http.NewRequest("POST", "/v1/services", payload)
-	c.Assert(err, IsNil)
-	rsp := v1PostServices(apiCmd("/v1/services"), req, nil).(*resp)
-	rec := httptest.NewRecorder()
-	rsp.ServeHTTP(rec, req)
-	c.Check(rec.Result().StatusCode, Equals, 202)
-
-	// Waiting for the change to be in doing state cannot guarantee the service is
-	// in the starting state, so here we wait until the service is in the starting
-	// state. We wait up to 25*20=500ms to make sure there is still half a second
-	// left to stop the service before okayDelay.
-	for range 25 {
-		svcInfo, err := d.overlord.ServiceManager().Services([]string{"test1"})
-		c.Assert(err, IsNil)
-		if len(svcInfo) > 0 && svcInfo[0].Current == servstate.StatusActive {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-
-	// Stop the daemon, which should stop services in starting state. At this point,
-	// it should still be within the okayDelay.
-	err = d.Stop(nil)
-	c.Assert(err, IsNil)
-
-	// Ensure a "stop" change is created, along with its "stop" tasks.
-	d.state.Lock()
-	defer d.state.Unlock()
-	changes := d.state.Changes()
-	var change *state.Change
-	for _, ch := range changes {
-		if ch.Kind() == "stop" {
-			change = ch
-		}
-	}
-	if change == nil {
-		c.Fatalf("stop change not found")
-	}
-	c.Check(change.Status(), Equals, state.DoneStatus)
-	tasks := change.Tasks()
-	c.Assert(tasks, HasLen, 1)
-	c.Check(tasks[0].Kind(), Equals, "stop")
-}
-
-func (s *daemonSuite) TestWritesRequireAdminAccess(c *C) {
-	for _, cmd := range API {
-		if cmd.Path == "/v1/notices" {
-			// Any user is allowed to add a notice with their own uid.
-			continue
-		}
-		if cmd.Path == "/v1/build-test" {
-			// Build test endpoint is open access.
-			continue
-		}
-		switch cmd.WriteAccess.(type) {
-		case OpenAccess, UserAccess:
-			c.Errorf("%s WriteAccess should be AdminAccess, not %T", cmd.Path, cmd.WriteAccess)
-		}
-	}
-
-	// File pull (read) may be sensitive, so requires admin access too.
-	cmd := apiCmd("/v1/files")
-	switch cmd.ReadAccess.(type) {
-	case OpenAccess, UserAccess:
-		c.Errorf("%s ReadAccess should be AdminAccess, not %T", cmd.Path, cmd.WriteAccess)
-	}
-
-	// Task websockets (GET) is open access so it can be used over HTTP.
-	cmd = apiCmd("/v1/tasks/{task-id}/websocket/{websocket-id}")
-	switch cmd.ReadAccess.(type) {
-	case AdminAccess, OpenAccess:
-		// okay
-	default:
-		c.Errorf("%s ReadAccess should be AdminAccess or OpenAccess, not %T", cmd.Path, cmd.ReadAccess)
-	}
-}
-
-func (s *daemonSuite) TestAPIAccessLevels(c *C) {
-	_ = s.newDaemon(c)
-
-	tests := []struct {
-		method string
-		path   string
-		body   string
-		uid    int // -1 means no peer cred user
-		status int
-	}{
-		{"GET", "/v1/system-info", ``, -1, http.StatusOK},
-
-		{"GET", "/v1/health", ``, -1, http.StatusOK},
-
-		{"GET", "/v1/changes", ``, -1, http.StatusOK},
-		{"GET", "/v1/changes", ``, 42, http.StatusOK},
-		{"GET", "/v1/changes", ``, 0, http.StatusOK},
-
-		{"GET", "/v1/services", ``, -1, http.StatusUnauthorized},
-		{"GET", "/v1/services", ``, 42, http.StatusOK},
-		{"GET", "/v1/services", ``, 0, http.StatusOK},
-		{"POST", "/v1/services", ``, -1, http.StatusUnauthorized},
-		{"POST", "/v1/services", ``, 42, http.StatusUnauthorized},
-		{"POST", "/v1/services", ``, 0, http.StatusBadRequest},
-
-		{"POST", "/v1/layers", ``, -1, http.StatusUnauthorized},
-		{"POST", "/v1/layers", ``, 42, http.StatusUnauthorized},
-		{"POST", "/v1/layers", ``, 0, http.StatusBadRequest},
-
-		{"GET", "/v1/files?action=list&path=/", ``, -1, http.StatusUnauthorized},
-		{"GET", "/v1/files?action=list&path=/", ``, 42, http.StatusUnauthorized}, // even reading files requires admin
-		{"GET", "/v1/files?action=list&path=/", ``, 0, http.StatusOK},
-		{"POST", "/v1/files", `{}`, -1, http.StatusUnauthorized},
-		{"POST", "/v1/files", `{}`, 42, http.StatusUnauthorized},
-		{"POST", "/v1/files", `{}`, 0, http.StatusBadRequest},
-
-		{"GET", "/v1/logs", ``, -1, http.StatusUnauthorized},
-		{"GET", "/v1/logs", ``, 42, http.StatusOK},
-		{"GET", "/v1/logs", ``, 0, http.StatusOK},
-
-		{"POST", "/v1/exec", `{}`, -1, http.StatusUnauthorized},
-		{"POST", "/v1/exec", `{}`, 42, http.StatusUnauthorized},
-		{"POST", "/v1/exec", `{}`, 0, http.StatusBadRequest},
-
-		{"POST", "/v1/signals", `{}`, -1, http.StatusUnauthorized},
-		{"POST", "/v1/signals", `{}`, 42, http.StatusUnauthorized},
-		{"POST", "/v1/signals", `{}`, 0, http.StatusBadRequest},
-
-		{"GET", "/v1/checks", ``, -1, http.StatusUnauthorized},
-		{"GET", "/v1/checks", ``, 42, http.StatusOK},
-		{"GET", "/v1/checks", ``, 0, http.StatusOK},
-
-		{"GET", "/v1/notices", ``, -1, http.StatusUnauthorized},
-		{"GET", "/v1/notices", ``, 42, http.StatusOK},
-		{"GET", "/v1/notices", ``, 0, http.StatusOK},
-		{"POST", "/v1/notices", `{}`, -1, http.StatusUnauthorized},
-		{"POST", "/v1/notices", `{}`, 42, http.StatusBadRequest},
-		{"POST", "/v1/notices", `{}`, 0, http.StatusBadRequest},
-	}
-
-	for _, test := range tests {
-		remoteAddr := ""
-		if test.uid >= 0 {
-			remoteAddr = fmt.Sprintf("pid=100;uid=%d;socket=;", test.uid)
-		}
-
-		ctx := context.WithValue(context.Background(), TransportTypeKey{}, TransportTypeUnixSocket)
-		urlStr := "http://localhost" + test.path
-		request, err := http.NewRequestWithContext(
-			ctx,
-			test.method,
-			urlStr,
-			io.NopCloser(strings.NewReader(test.body)),
-		)
-		c.Assert(err, IsNil)
-		request.RemoteAddr = remoteAddr
-		recorder := httptest.NewRecorder()
-
-		// Get only the path (without the query) to look up the command.
-		requestURL, err := url.Parse(urlStr)
-		c.Assert(err, IsNil)
-		cmd := apiCmd(requestURL.Path)
-
-		cmd.ServeHTTP(recorder, request)
-
-		response := recorder.Result()
-		if response.StatusCode != test.status {
-			// Log response body to make it easier to debug if the test fails.
-			c.Logf("%s %s uid=%d: expected %d, got %d; response body:\n%s",
-				test.method, test.path, test.uid, test.status, response.StatusCode, recorder.Body.String())
-		}
-		c.Assert(response.StatusCode, Equals, test.status)
-	}
-}
-
-func (s *daemonSuite) TestSecurityLoggingAuthzFail(c *C) {
-	logBuf, restore := logger.MockLogger("")
-	defer restore()
-
-	_ = s.newDaemon(c)
-
-	request, err := http.NewRequestWithContext(
-		context.WithValue(context.Background(), TransportTypeKey{}, TransportTypeUnixSocket),
-		"POST",
-		"http://_/v1/services",
-		io.NopCloser(strings.NewReader("")),
-	)
-	c.Assert(err, IsNil)
-	request.RemoteAddr = "pid=100;uid=42;socket=;"
-	recorder := httptest.NewRecorder()
-
-	cmd := apiCmd("/v1/services")
-	cmd.ServeHTTP(recorder, request)
-
-	response := recorder.Result()
-	c.Assert(response.StatusCode, Equals, http.StatusUnauthorized)
-
-	ensureSecurityLog(c, logBuf.String(), "CRITICAL", "authz_fail:42,/v1/services", "User 42 not authorized to access /v1/services")
 }
 
 func ensureSecurityLog(c *C, logs, level, event, description string) {
@@ -1681,7 +947,7 @@ func ensureSecurityLog(c *C, logs, level, event, description string) {
 			log.Level == level &&
 			log.Event == event &&
 			log.Description == description &&
-			log.AppID == "pebble" {
+			log.AppID == "buildtest" {
 			gotLog = true
 		}
 	}
@@ -1893,312 +1159,4 @@ func (t *transportTypeSuite) TestTransportTypeContext(c *C) {
 	c.Assert(transport.IsValid(), Equals, true)
 	c.Assert(transport.IsConcealed(), Equals, true)
 	c.Assert(transport.String(), Equals, "https")
-}
-
-func (s *daemonSuite) TestServeHTTPUserStateLocal(c *C) {
-	d := s.newDaemon(c)
-
-	// Set up a Local identity.
-	identitiesMgr := d.overlord.IdentitiesManager()
-	d.state.Lock()
-	err := identitiesMgr.AddIdentities(map[string]*identities.Identity{
-		"localuser": {
-			Access: identities.AdminAccess,
-			Local:  &identities.LocalIdentity{UserID: 1000},
-		},
-	})
-	d.state.Unlock()
-	c.Assert(err, IsNil)
-
-	// Capture the UserState passed to the response function.
-	var capturedUser *UserState
-	cmd := &Command{
-		d: d,
-		GET: func(c *Command, r *http.Request, user *UserState) Response {
-			capturedUser = user
-			return SyncResponse(true)
-		},
-		ReadAccess: UserAccess{},
-	}
-
-	// Make request with the Local user's UID.
-	ctx := context.WithValue(context.Background(), TransportTypeKey{}, TransportTypeUnixSocket)
-	req, err := http.NewRequestWithContext(ctx, "GET", "", nil)
-	c.Assert(err, IsNil)
-	req.RemoteAddr = "pid=100;uid=1000;socket=;"
-
-	rec := httptest.NewRecorder()
-	cmd.ServeHTTP(rec, req)
-	c.Check(rec.Code, Equals, http.StatusOK)
-
-	// Verify UserState for Local identity.
-	c.Assert(capturedUser, NotNil)
-	c.Assert(capturedUser.Username, Equals, "localuser")
-	c.Assert(capturedUser.Access, Equals, identities.AdminAccess)
-	c.Assert(capturedUser.UID, NotNil)
-
-	// This specific expectation is only a temporary workaround to
-	// support code not yet supporting named identities, such as
-	// notices. UID should really be nil in this case.
-	c.Assert(*capturedUser.UID, Equals, uint32(1000))
-}
-
-func (s *daemonSuite) TestServeHTTPUserStateUIDOnly(c *C) {
-	d := s.newDaemon(c)
-	// Don't set up any named identities, so it falls back to UID-only
-
-	// Capture the UserState passed to the response function.
-	var capturedUser *UserState
-	cmd := &Command{
-		d: d,
-		GET: func(c *Command, r *http.Request, user *UserState) Response {
-			capturedUser = user
-			return SyncResponse(true)
-		},
-		ReadAccess: UserAccess{},
-	}
-
-	// Make request with just a UID (not root, not daemon UID)
-	ctx := context.WithValue(context.Background(), TransportTypeKey{}, TransportTypeUnixSocket)
-	req, err := http.NewRequestWithContext(ctx, "GET", "", nil)
-	c.Assert(err, IsNil)
-	req.RemoteAddr = "pid=100;uid=5000;socket=;"
-
-	rec := httptest.NewRecorder()
-	cmd.ServeHTTP(rec, req)
-	c.Check(rec.Code, Equals, http.StatusOK)
-
-	// Verify UserState for UID-only (no named identity)
-	c.Assert(capturedUser, NotNil)
-	c.Assert(capturedUser.Username, Equals, "")
-	c.Assert(capturedUser.Access, Equals, identities.ReadAccess)
-	c.Assert(capturedUser.UID, NotNil)
-	c.Assert(*capturedUser.UID, Equals, uint32(5000))
-}
-
-func (s *daemonSuite) TestServeHTTPUserStateUIDOnlyRoot(c *C) {
-	d := s.newDaemon(c)
-	// Don't set up any named identities, so it falls back to UID-only
-
-	// Capture the UserState passed to the response function.
-	var capturedUser *UserState
-	cmd := &Command{
-		d: d,
-		GET: func(c *Command, r *http.Request, user *UserState) Response {
-			capturedUser = user
-			return SyncResponse(true)
-		},
-		ReadAccess: UserAccess{},
-	}
-
-	// Make request as root (UID 0).
-	ctx := context.WithValue(context.Background(), TransportTypeKey{}, TransportTypeUnixSocket)
-	req, err := http.NewRequestWithContext(ctx, "GET", "", nil)
-	c.Assert(err, IsNil)
-	req.RemoteAddr = "pid=100;uid=0;socket=;"
-
-	rec := httptest.NewRecorder()
-	cmd.ServeHTTP(rec, req)
-	c.Check(rec.Code, Equals, http.StatusOK)
-
-	// Verify UserState for root UID.
-	c.Assert(capturedUser, NotNil)
-	c.Assert(capturedUser.Username, Equals, "")
-	c.Assert(capturedUser.Access, Equals, identities.AdminAccess)
-	c.Assert(capturedUser.UID, NotNil)
-	c.Assert(*capturedUser.UID, Equals, uint32(0))
-}
-
-func (s *daemonSuite) TestServeHTTPUserStateUIDOnlyDaemonUID(c *C) {
-	d := s.newDaemon(c)
-	// Don't set up any named identities, so it falls back to UID-only
-
-	// Capture the UserState passed to the response function.
-	var capturedUser *UserState
-	cmd := &Command{
-		d: d,
-		GET: func(c *Command, r *http.Request, user *UserState) Response {
-			capturedUser = user
-			return SyncResponse(true)
-		},
-		ReadAccess: UserAccess{},
-	}
-
-	// Make request as the daemon's UID.
-	daemonUID := uint32(os.Getuid())
-	ctx := context.WithValue(context.Background(), TransportTypeKey{}, TransportTypeUnixSocket)
-	req, err := http.NewRequestWithContext(ctx, "GET", "", nil)
-	c.Assert(err, IsNil)
-	req.RemoteAddr = fmt.Sprintf("pid=100;uid=%d;socket=;", daemonUID)
-
-	rec := httptest.NewRecorder()
-	cmd.ServeHTTP(rec, req)
-	c.Check(rec.Code, Equals, http.StatusOK)
-
-	// Verify UserState for daemon UID.
-	c.Assert(capturedUser, NotNil)
-	c.Assert(capturedUser.Username, Equals, "")
-	c.Assert(capturedUser.Access, Equals, identities.AdminAccess)
-	c.Assert(capturedUser.UID, NotNil)
-	c.Assert(*capturedUser.UID, Equals, daemonUID)
-}
-
-func (s *daemonSuite) TestServeHTTPUserStateBasicUnixSocket(c *C) {
-	d := s.newDaemon(c)
-
-	// Set up a Basic auth identity with a hashed password.
-	// Generate sha512-crypt hash for password "test".
-	crypt := sha512_crypt.New()
-	hashedPassword, err := crypt.Generate([]byte("test"), nil)
-	c.Assert(err, IsNil)
-
-	identitiesMgr := d.overlord.IdentitiesManager()
-	d.state.Lock()
-	err = identitiesMgr.AddIdentities(map[string]*identities.Identity{
-		"basicuser": {
-			Access: identities.ReadAccess,
-			Basic:  &identities.BasicIdentity{Password: hashedPassword},
-		},
-	})
-	d.state.Unlock()
-	c.Assert(err, IsNil)
-
-	// Capture the UserState passed to the response function.
-	var capturedUser *UserState
-	cmd := &Command{
-		d: d,
-		GET: func(c *Command, r *http.Request, user *UserState) Response {
-			capturedUser = user
-			return SyncResponse(true)
-		},
-		ReadAccess: UserAccess{},
-	}
-
-	// Make request with Basic auth credentials over Unix Socket.
-	ctx := context.WithValue(context.Background(), TransportTypeKey{}, TransportTypeUnixSocket)
-	req, err := http.NewRequestWithContext(ctx, "GET", "", nil)
-	c.Assert(err, IsNil)
-	req.SetBasicAuth("basicuser", "test")
-	req.RemoteAddr = "pid=100;uid=1000;socket=;"
-
-	rec := httptest.NewRecorder()
-	cmd.ServeHTTP(rec, req)
-	c.Check(rec.Code, Equals, http.StatusOK)
-
-	// Verify UserState for Basic identity over Unix Socket.
-	c.Assert(capturedUser, NotNil)
-	c.Assert(capturedUser.Username, Equals, "basicuser")
-	c.Assert(capturedUser.Access, Equals, identities.ReadAccess)
-	c.Assert(capturedUser.UID, IsNil)
-}
-
-func (s *daemonSuite) TestServeHTTPUserStateBasicHTTP(c *C) {
-	d := s.newDaemon(c)
-
-	// Set up a Basic auth identity with a hashed password.
-	// Generate sha512-crypt hash for password "test".
-	crypt := sha512_crypt.New()
-	hashedPassword, err := crypt.Generate([]byte("test"), nil)
-	c.Assert(err, IsNil)
-
-	identitiesMgr := d.overlord.IdentitiesManager()
-	d.state.Lock()
-	err = identitiesMgr.AddIdentities(map[string]*identities.Identity{
-		"basicuser": {
-			Access: identities.MetricsAccess,
-			Basic:  &identities.BasicIdentity{Password: hashedPassword},
-		},
-	})
-	d.state.Unlock()
-	c.Assert(err, IsNil)
-
-	// Capture the UserState passed to the response function.
-	var capturedUser *UserState
-	cmd := &Command{
-		d: d,
-		GET: func(c *Command, r *http.Request, user *UserState) Response {
-			capturedUser = user
-			return SyncResponse(true)
-		},
-		ReadAccess: MetricsAccess{},
-	}
-
-	// Make request with Basic auth credentials over HTTP (not HTTPS).
-	ctx := context.WithValue(context.Background(), TransportTypeKey{}, TransportTypeHTTP)
-	req, err := http.NewRequestWithContext(ctx, "GET", "", nil)
-	c.Assert(err, IsNil)
-	req.SetBasicAuth("basicuser", "test")
-	req.RemoteAddr = "192.168.1.100:8888"
-
-	rec := httptest.NewRecorder()
-	cmd.ServeHTTP(rec, req)
-	c.Check(rec.Code, Equals, http.StatusOK)
-
-	// Verify UserState for Basic identity over HTTP.
-	c.Assert(capturedUser, NotNil)
-	c.Assert(capturedUser.Username, Equals, "basicuser")
-	c.Assert(capturedUser.Access, Equals, identities.MetricsAccess)
-	c.Assert(capturedUser.UID, IsNil)
-}
-
-func (s *daemonSuite) TestServeHTTPUserStateCert(c *C) {
-	d := s.newDaemon(c)
-
-	// Create a test certificate.
-	certPEM := `-----BEGIN CERTIFICATE-----
-MIIBRDCB96ADAgECAhROTkdEcgeil5/5NUNTq1ZRPDLiPTAFBgMrZXAwGDEWMBQG
-A1UEAwwNY2Fub25pY2FsLmNvbTAeFw0yNTA5MDgxNTI2NTJaFw0zNTA5MDYxNTI2
-NTJaMBgxFjAUBgNVBAMMDWNhbm9uaWNhbC5jb20wKjAFBgMrZXADIQDtxRqb9EMe
-ffcoJ0jNn9ys8uDFeHnQ6JRxgNFvomDTHqNTMFEwHQYDVR0OBBYEFI/oHjhG1A7F
-3HM7McXP7w7CxtrwMB8GA1UdIwQYMBaAFI/oHjhG1A7F3HM7McXP7w7CxtrwMA8G
-A1UdEwEB/wQFMAMBAf8wBQYDK2VwA0EA40v4eckaV7RBXyRb0sfcCcgCAGYtiCSD
-jwXVTUH4HLpbhK0RAaEPOL4h5jm36CrWTkxzpbdCrIu4NgPLQKJ6Cw==
------END CERTIFICATE-----`
-
-	block, _ := pem.Decode([]byte(certPEM))
-	c.Assert(block, NotNil)
-	cert, err := x509.ParseCertificate(block.Bytes)
-	c.Assert(err, IsNil)
-
-	// Set up a Cert identity.
-	identitiesMgr := d.overlord.IdentitiesManager()
-	d.state.Lock()
-	err = identitiesMgr.AddIdentities(map[string]*identities.Identity{
-		"certuser1": {
-			Access: identities.AdminAccess,
-			Cert:   &identities.CertIdentity{X509: cert},
-		},
-	})
-	d.state.Unlock()
-	c.Assert(err, IsNil)
-
-	// Capture the UserState passed to the response function.
-	var capturedUser *UserState
-	cmd := &Command{
-		d: d,
-		GET: func(c *Command, r *http.Request, user *UserState) Response {
-			capturedUser = user
-			return SyncResponse(true)
-		},
-		ReadAccess: UserAccess{},
-	}
-
-	// Make request with mTLS client certificate.
-	ctx := context.WithValue(context.Background(), TransportTypeKey{}, TransportTypeHTTPS)
-	req, err := http.NewRequestWithContext(ctx, "GET", "", nil)
-	c.Assert(err, IsNil)
-	req.RemoteAddr = "192.168.1.100:8443"
-	req.TLS = &tls.ConnectionState{
-		PeerCertificates: []*x509.Certificate{cert},
-	}
-
-	rec := httptest.NewRecorder()
-	cmd.ServeHTTP(rec, req)
-	c.Check(rec.Code, Equals, http.StatusOK)
-
-	// Verify UserState for Cert identity.
-	c.Assert(capturedUser, NotNil)
-	c.Assert(capturedUser.Username, Equals, "certuser1")
-	c.Assert(capturedUser.Access, Equals, identities.AdminAccess)
-	c.Assert(capturedUser.UID, IsNil)
 }

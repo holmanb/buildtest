@@ -17,7 +17,7 @@ package overlord
 import (
 	"time"
 
-	"github.com/canonical/pebble/internals/osutil"
+	"github.com/holmanb/buildtest/internals/osutil"
 )
 
 type overlordStateBackend struct {

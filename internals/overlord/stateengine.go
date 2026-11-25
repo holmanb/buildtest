@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/canonical/pebble/internals/logger"
-	"github.com/canonical/pebble/internals/overlord/state"
+	"github.com/holmanb/buildtest/internals/logger"
+	"github.com/holmanb/buildtest/internals/overlord/state"
 )
 
 // StateManager is implemented by types responsible for observing

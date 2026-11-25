@@ -22,8 +22,8 @@ import (
 
 	"gopkg.in/check.v1"
 
-	"github.com/canonical/pebble/internals/osutil"
-	"github.com/canonical/pebble/internals/osutil/sys"
+	"github.com/holmanb/buildtest/internals/osutil"
+	"github.com/holmanb/buildtest/internals/osutil/sys"
 )
 
 type mkdirSuite struct{}
@@ -213,10 +213,10 @@ func (mkdirSuite) TestMakeParentsChmodAndChown(c *check.C) {
 		c.Skip("requires running as root")
 	}
 
-	username := os.Getenv("PEBBLE_TEST_USER")
-	group := os.Getenv("PEBBLE_TEST_GROUP")
+	username := os.Getenv("BUILDTEST_TEST_USER")
+	group := os.Getenv("BUILDTEST_TEST_GROUP")
 	if username == "" || group == "" {
-		c.Fatalf("must set PEBBLE_TEST_USER and PEBBLE_TEST_GROUP")
+		c.Fatalf("must set BUILDTEST_TEST_USER and BUILDTEST_TEST_GROUP")
 	}
 
 	u, err := user.Lookup(username)

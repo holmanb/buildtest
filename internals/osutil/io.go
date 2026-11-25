@@ -26,7 +26,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/canonical/pebble/internals/osutil/sys"
+	"github.com/holmanb/buildtest/internals/osutil/sys"
 )
 
 // AtomicWriteFlags are a bitfield of flags for AtomicWriteFile

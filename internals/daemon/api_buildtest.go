@@ -23,9 +23,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/canonical/pebble/internals/logger"
-	"github.com/canonical/pebble/internals/overlord/buildteststate"
+	"github.com/holmanb/buildtest/internals/logger"
+	"github.com/holmanb/buildtest/internals/overlord/buildteststate"
 )
+
+// minBoundaryLength is the minimum length of a multipart boundary, per
+// RFC 2046.
+const minBoundaryLength = 32
 
 type buildTestMetadata struct {
 	SourcePath  string `json:"source-path,omitempty"`

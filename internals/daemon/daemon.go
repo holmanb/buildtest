@@ -17,8 +17,6 @@ package daemon
 import (
 	"bufio"
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -38,18 +36,13 @@ import (
 	"github.com/gorilla/mux"
 	"gopkg.in/tomb.v2"
 
-	"github.com/canonical/pebble/internals/logger"
-	"github.com/canonical/pebble/internals/osutil"
-	"github.com/canonical/pebble/internals/overlord"
-	"github.com/canonical/pebble/internals/overlord/checkstate"
-	"github.com/canonical/pebble/internals/overlord/identities"
-	"github.com/canonical/pebble/internals/overlord/restart"
-	"github.com/canonical/pebble/internals/overlord/servstate"
-	"github.com/canonical/pebble/internals/overlord/standby"
-	"github.com/canonical/pebble/internals/overlord/state"
-	"github.com/canonical/pebble/internals/overlord/tlsstate"
-	"github.com/canonical/pebble/internals/reaper"
-	"github.com/canonical/pebble/internals/systemd"
+	"github.com/holmanb/buildtest/internals/logger"
+	"github.com/holmanb/buildtest/internals/osutil"
+	"github.com/holmanb/buildtest/internals/overlord"
+	"github.com/holmanb/buildtest/internals/overlord/restart"
+	"github.com/holmanb/buildtest/internals/overlord/state"
+	"github.com/holmanb/buildtest/internals/reaper"
+	"github.com/holmanb/buildtest/internals/systemd"
 )
 
 var (
@@ -126,14 +119,6 @@ type Options struct {
 	// Dir is the pebble directory where all setup is found. Defaults to /var/lib/pebble/default.
 	Dir string
 
-	// LayersDir is an optional path for the layers directory.
-	// Defaults to "layers" inside the pebble directory.
-	LayersDir string
-
-	// TLSOptions holds the TLS configuration for the HTTPS server. TLSOptions.TLSDir
-	// defaults to "tls" inside the pebble directory if empty.
-	TLSOptions tlsstate.Options
-
 	// SocketPath is an optional path for the unix socket used for the client
 	// to communicate with the daemon. Defaults to a hidden (dotted) name inside
 	// the pebble directory.
@@ -143,11 +128,6 @@ type Options struct {
 	// ":4000" to listen on any address, port 4000. If not set, the HTTP API
 	// server is not started.
 	HTTPAddress string
-
-	// HTTPSAddress is the address for the HTTPS API server, for example
-	// ":8443" to listen on any address, port 8443. If not set, the HTTPS
-	// API server is not started.
-	HTTPSAddress string
 
 	// ServiceOuput is an optional io.Writer for the service log output, if set, all services
 	// log output will be written to the writer.
@@ -169,13 +149,10 @@ type Daemon struct {
 	overlord        *overlord.Overlord
 	state           *state.State
 	generalListener net.Listener
-	httpListener    net.Listener
-	httpsListener   net.Listener
-	connTracker     *connTracker
-	serve           *http.Server
-	tomb            tomb.Tomb
-	router          *mux.Router
-	standbyOpinions *standby.StandbyOpinions
+	httpListener  net.Listener
+	serve         *http.Server
+	tomb          tomb.Tomb
+	router        *mux.Router
 
 	// set to what kind of restart was requested (if any)
 	requestedRestart restart.RestartType
@@ -188,9 +165,9 @@ type Daemon struct {
 	mu sync.Mutex
 }
 
-// UserState represents the state of an authenticated API user.
+// UserState represents the state of an API user. With identity management
+// removed, all requests are open access and no user state is tracked.
 type UserState struct {
-	Access   identities.Access
 	UID      *uint32
 	Username string
 }
@@ -212,60 +189,6 @@ type Command struct {
 	WriteAccess AccessChecker
 
 	d *Daemon
-}
-
-func userFromRequest(st *state.State, identitiesMgr *identities.Manager, r *http.Request, ucred *Ucrednet) *UserState {
-	// Does the connection include a single mTLS client identity
-	// certificate?
-	var clientCert *x509.Certificate
-	if r.TLS != nil && len(r.TLS.PeerCertificates) == 1 {
-		clientCert = r.TLS.PeerCertificates[0]
-	}
-
-	// Does the HTTP header include basic auth credentials? Note that
-	// we explicitly prohibit using basic auth credentials for HTTPS
-	// for now.
-	var username string
-	var password string
-	if RequestTransportType(r) != TransportTypeHTTPS {
-		username, password, _ = r.BasicAuth()
-	}
-
-	// Is a unix socket peer credential UID available?
-	var userID *uint32
-	if ucred != nil {
-		userID = &ucred.Uid
-	}
-
-	st.Lock()
-	identity := identitiesMgr.IdentityFromInputs(userID, username, password, clientCert)
-	st.Unlock()
-
-	if identity != nil {
-		u := &UserState{
-			Access:   identity.Access,
-			Username: identity.Name,
-		}
-
-		// The notices implementation does not yet support identities
-		// and expects a UID even in the case where a named local
-		// identity exists. See the userString function for how
-		// the code should behave. We propagate the UID as a temporary
-		// workaround here, but eventually all code should refer to
-		// identity usernames where available, instead of identity type
-		// specific details. Note that the UID is still propagated, if
-		// available, for cases where no named identities exist. This
-		// happens outside of this function since we only care about
-		// identities here.
-		if identity.Local != nil {
-			u.UID = userID
-		}
-
-		// We found an identity match.
-		return u
-	}
-	// No identity match.
-	return nil
 }
 
 func (d *Daemon) Overlord() *overlord.Overlord {
@@ -311,25 +234,11 @@ func (c *Command) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Optimisation: avoid calling userFromRequest, which acquires the state
-	// lock, in case we don't need to (when endpoint is OpenAccess). This
-	// avoids holding the state lock for /v1/health in particular, which is
-	// not good: https://github.com/canonical/pebble/pull/369
+	// All endpoints are open access, so no user resolution is needed.
 	var user *UserState
-	if _, isOpen := access.(OpenAccess); !isOpen {
-		identitiesMgr := c.d.Overlord().IdentitiesManager()
-		user = userFromRequest(c.d.state, identitiesMgr, r, ucred)
-	}
-
-	// If we don't have a named-identity user, use ucred UID to see if we have a default.
-	if user == nil && ucred != nil {
-		if ucred.Uid == 0 || ucred.Uid == uint32(os.Getuid()) {
-			// Admin if UID is 0 (root) or the UID the daemon is running as.
-			user = &UserState{Access: identities.AdminAccess, UID: &ucred.Uid}
-		} else {
-			// Regular read access if any other local UID.
-			user = &UserState{Access: identities.ReadAccess, UID: &ucred.Uid}
-		}
+	if ucred != nil {
+		uid := ucred.Uid
+		user = &UserState{UID: &uid}
 	}
 
 	// We only proceed if we support the transport (we can identify it).
@@ -444,7 +353,7 @@ func logit(handler http.Handler) http.Handler {
 // panics in ServeHTTP goroutines, so that the server isn't left in a bad or
 // deadlocked state (for example, due to a held mutex lock).
 //
-// See: https://github.com/canonical/pebble/issues/314#issuecomment-1926148064
+// See: https://github.com/holmanb/buildtest/issues/314#issuecomment-1926148064
 // Workaround from: https://github.com/golang/go/issues/16542#issuecomment-246549902
 func exitOnPanic(handler http.Handler, stderr io.Writer, exit func()) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -483,16 +392,6 @@ func (d *Daemon) Init() error {
 		logger.Noticef("HTTP API server listening on %q.", d.options.HTTPAddress)
 	}
 
-	if d.options.HTTPSAddress != "" {
-		tlsConf := d.overlord.TLSManager().ListenConfig()
-		listener, err := tls.Listen("tcp", d.options.HTTPSAddress, tlsConf)
-		if err != nil {
-			return fmt.Errorf("cannot TLS listen on %q: %v", d.options.HTTPSAddress, err)
-		}
-		d.httpsListener = listener
-		logger.Noticef("HTTPS API server listening on %q.", d.options.HTTPSAddress)
-	}
-
 	logger.Noticef("Started daemon.")
 	return nil
 }
@@ -528,42 +427,6 @@ func (d *Daemon) addRoutes() {
 	d.router.NotFoundHandler = NotFound("invalid API endpoint requested")
 }
 
-type connTracker struct {
-	mu    sync.Mutex
-	conns map[net.Conn]struct{}
-}
-
-func (ct *connTracker) CanStandby() bool {
-	ct.mu.Lock()
-	defer ct.mu.Unlock()
-
-	return len(ct.conns) == 0
-}
-
-func (ct *connTracker) trackConn(conn net.Conn, state http.ConnState) {
-	ct.mu.Lock()
-	defer ct.mu.Unlock()
-	// we ignore hijacked connections, if we do things with websockets
-	// we'll need custom shutdown handling for them
-	if state == http.StateNew || state == http.StateActive {
-		ct.conns[conn] = struct{}{}
-	} else {
-		delete(ct.conns, conn)
-	}
-}
-
-func (d *Daemon) CanStandby() bool {
-	return systemd.SocketAvailable()
-}
-
-func (d *Daemon) initStandbyHandling() {
-	d.standbyOpinions = standby.New(d.state)
-	d.standbyOpinions.AddOpinion(d)
-	d.standbyOpinions.AddOpinion(d.connTracker)
-	d.standbyOpinions.AddOpinion(d.overlord)
-	d.standbyOpinions.Start()
-}
-
 func (d *Daemon) Start() error {
 	if d.rebootIsMissing {
 		// we need to schedule and wait for a system restart
@@ -583,29 +446,22 @@ func (d *Daemon) Start() error {
 
 	d.StartTime = time.Now()
 
-	d.connTracker = &connTracker{conns: make(map[net.Conn]struct{})}
 	d.serve = &http.Server{
 		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
 			// Flag the incoming requests with a context value so we can identify the
-			// transport of the request in the http.Request object. We can use this for
-			// refined access checker decisions.
+			// transport of the request in the http.Request object.
 			switch c.(type) {
 			case *ucrednetConn:
 				return context.WithValue(ctx, TransportTypeKey{}, TransportTypeUnixSocket)
 			case *net.TCPConn:
 				return context.WithValue(ctx, TransportTypeKey{}, TransportTypeHTTP)
-			case *tls.Conn:
-				return context.WithValue(ctx, TransportTypeKey{}, TransportTypeHTTPS)
 			}
 			return context.WithValue(ctx, TransportTypeKey{}, TransportTypeUnknown)
 		},
 		Handler: exitOnPanic(logit(d.router), os.Stderr, func() {
 			os.Exit(1)
 		}),
-		ConnState: d.connTracker.trackConn,
 	}
-
-	d.initStandbyHandling()
 
 	d.overlord.Loop()
 
@@ -626,17 +482,6 @@ func (d *Daemon) Start() error {
 			return nil
 		})
 	}
-	if d.httpsListener != nil {
-		// Start additional HTTPS API
-		d.tomb.Go(func() error {
-			err := d.serve.Serve(d.httpsListener)
-			if err != http.ErrServerClosed && d.tomb.Err() == tomb.ErrStillAlive {
-				return err
-			}
-			return nil
-		})
-	}
-
 	// notify systemd that we are ready
 	systemdSdNotify("READY=1")
 	return nil
@@ -695,19 +540,11 @@ func (d *Daemon) Stop(sigCh chan<- os.Signal) error {
 	// Stop all running services. Must do this before overlord.Stop, as it
 	// creates a change and waits for the change, and overlord.Stop calls
 	// StateEngine.Stop, which locks, so Ensure would result in a deadlock.
-	err := d.stopRunningServices()
-	if err != nil {
-		// This isn't fatal for exiting the daemon, so log and continue.
-		logger.Noticef("Cannot stop running services: %v", err)
-	}
-
 	d.tomb.Kill(nil)
 
 	d.mu.Lock()
 	requestedRestart := d.requestedRestart
 	d.mu.Unlock()
-
-	d.standbyOpinions.Stop()
 
 	if requestedRestart == restart.RestartSystem {
 		// give time to polling clients to notice restart
@@ -726,23 +563,9 @@ func (d *Daemon) Stop(sigCh chan<- os.Signal) error {
 		systemdSdNotify("STOPPING=1")
 	}
 
-	if requestedRestart == restart.RestartSocket {
-		// At this point we processed all open requests (and
-		// stopped accepting new requests) - before going into
-		// socket activated mode we need to check if any of
-		// those open requests resulted in something that
-		// prevents us from going into socket activation mode.
-		//
-		// If this is the case we do a "normal" pebble restart
-		// to process the new changes.
-		if !d.standbyOpinions.CanStandby() {
-			requestedRestart = restart.RestartDaemon
-			d.requestedRestart = requestedRestart
-		}
-	}
 	d.overlord.Stop()
 
-	err = d.tomb.Wait()
+	err := d.tomb.Wait()
 	if err != nil {
 		// do not stop the shutdown even if the tomb errors
 		// because we already scheduled a slow shutdown and
@@ -771,37 +594,6 @@ func (d *Daemon) Stop(sigCh chan<- os.Signal) error {
 	return nil
 }
 
-// stopRunningServices stops all running services, waiting for a short time
-// for them all to stop.
-func (d *Daemon) stopRunningServices() error {
-	taskSet, err := servstate.StopRunning(d.state, d.overlord.ServiceManager())
-	if err != nil {
-		return err
-	}
-	if taskSet == nil {
-		logger.Debugf("No services to stop.")
-		return nil
-	}
-
-	// One change to stop them all.
-	logger.Noticef("Stopping all running services.")
-	st := d.state
-	st.Lock()
-	chg := st.NewChange("stop", "Stop all running services")
-	chg.AddAll(taskSet)
-	st.EnsureBefore(0) // start operation right away
-	st.Unlock()
-
-	// Wait for a limited amount of time for them to stop.
-	select {
-	case <-chg.Ready():
-		logger.Debugf("All services stopped.")
-	case <-time.After(d.overlord.ServiceManager().StopTimeout()):
-		return errors.New("timeout stopping running services")
-	}
-	return nil
-}
-
 func (d *Daemon) rebootDelay() (time.Duration, error) {
 	d.state.Lock()
 	defer d.state.Unlock()
@@ -816,7 +608,7 @@ func (d *Daemon) rebootDelay() (time.Duration, error) {
 	if err == nil {
 		rebootDelay = rebootAt.Sub(now)
 	} else {
-		ovr := os.Getenv("PEBBLE_REBOOT_DELAY") // for tests
+		ovr := os.Getenv("BUILDTEST_REBOOT_DELAY") // for tests
 		if ovr != "" {
 			d, err := time.ParseDuration(ovr)
 			if err == nil {
@@ -985,19 +777,6 @@ func (d *Daemon) RebootDidNotHappen(st *state.State) error {
 	return errExpectedReboot
 }
 
-// SetServiceArgs updates the specified service commands by replacing
-// existing arguments with the newly specified arguments.
-func (d *Daemon) SetServiceArgs(serviceArgs map[string][]string) error {
-	return d.overlord.PlanManager().SetServiceArgs(serviceArgs)
-}
-
-// pairingWindowEnabled is a helper function to simplify testing of code
-// dependant on the Pairing Manager.
-func (d *Daemon) pairingWindowEnabled() bool {
-	pairingManager := d.overlord.PairingManager()
-	return pairingManager.PairingEnabled()
-}
-
 func New(opts *Options) (*Daemon, error) {
 	d := &Daemon{
 		options: opts,
@@ -1005,8 +784,6 @@ func New(opts *Options) (*Daemon, error) {
 
 	ovldOptions := overlord.Options{
 		PebbleDir:      opts.Dir,
-		LayersDir:      opts.LayersDir,
-		TLSOptions:     opts.TLSOptions,
 		RestartHandler: d,
 		ServiceOutput:  opts.ServiceOutput,
 		Extension:      opts.OverlordExtension,
@@ -1065,6 +842,3 @@ func getListener(socketPath string, listenerMap map[string]net.Listener) (net.Li
 	return listener, nil
 }
 
-var getChecks = func(o *overlord.Overlord) ([]*checkstate.CheckInfo, error) {
-	return o.CheckManager().Checks()
-}

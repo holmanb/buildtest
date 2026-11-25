@@ -20,7 +20,7 @@ import (
 
 	. "gopkg.in/check.v1"
 
-	"github.com/canonical/pebble/internals/cli"
+	"github.com/holmanb/buildtest/internals/cli"
 )
 
 func (s *PebbleSuite) TestVersion(c *C) {

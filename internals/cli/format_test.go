@@ -20,7 +20,7 @@ import (
 
 	"gopkg.in/check.v1"
 
-	"github.com/canonical/pebble/internals/cli"
+	"github.com/holmanb/buildtest/internals/cli"
 )
 
 func setEnviron(env map[string]string) func() {

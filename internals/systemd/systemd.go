@@ -33,9 +33,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/canonical/pebble/internals/osutil"
-	"github.com/canonical/pebble/internals/osutil/squashfs"
-	"github.com/canonical/pebble/internals/reaper"
+	"github.com/holmanb/buildtest/internals/osutil"
+	"github.com/holmanb/buildtest/internals/osutil/squashfs"
+	"github.com/holmanb/buildtest/internals/reaper"
 )
 
 var (

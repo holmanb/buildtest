@@ -22,7 +22,7 @@ import (
 
 	. "gopkg.in/check.v1"
 
-	"github.com/canonical/pebble/internals/cli"
+	"github.com/holmanb/buildtest/internals/cli"
 )
 
 func (s *PebbleSuite) TestBuildTestExtraArgs(c *C) {
@@ -101,7 +101,7 @@ func (s *PebbleSuite) TestBuildTestSuccess(c *C) {
 		requestCount++
 	})
 
-	restore := fakeArgs("pebble", "build-test", srcDir)
+	restore := fakeArgs("buildtest", "build-test", srcDir)
 	defer restore()
 
 	exitCode := cli.PebbleMain()
@@ -149,7 +149,7 @@ func (s *PebbleSuite) TestBuildTestBuildFailure(c *C) {
 		requestCount++
 	})
 
-	restore := fakeArgs("pebble", "build-test", srcDir)
+	restore := fakeArgs("buildtest", "build-test", srcDir)
 	defer restore()
 
 	exitCode := cli.PebbleMain()
@@ -161,7 +161,7 @@ func (s *PebbleSuite) TestBuildTestBuildFailure(c *C) {
 }
 
 func (s *PebbleSuite) TestBuildTestNonexistentPath(c *C) {
-	restore := fakeArgs("pebble", "build-test", "/nonexistent/path")
+	restore := fakeArgs("buildtest", "build-test", "/nonexistent/path")
 	defer restore()
 
 	exitCode := cli.PebbleMain()

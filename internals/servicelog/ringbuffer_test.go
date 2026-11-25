@@ -22,7 +22,7 @@ import (
 
 	. "gopkg.in/check.v1"
 
-	"github.com/canonical/pebble/internals/servicelog"
+	"github.com/holmanb/buildtest/internals/servicelog"
 )
 
 type ringBufferSuite struct{}
@@ -46,7 +46,7 @@ func (s *ringBufferSuite) TestCrossBoundaryWriteCopy(c *C) {
 	rb := servicelog.NewRingBuffer(13)
 	_, a1 := rb.Positions()
 	c.Assert(a1, Equals, servicelog.RingPos(0))
-	n, err := fmt.Fprint(rb, "pebble")
+	n, err := fmt.Fprint(rb, "btstrb")
 	c.Assert(err, IsNil)
 	c.Assert(n, Equals, 6)
 	_, a2 := rb.Positions()
@@ -58,7 +58,7 @@ func (s *ringBufferSuite) TestCrossBoundaryWriteCopy(c *C) {
 	c.Assert(err, Equals, io.EOF)
 	c.Assert(n, Equals, 6)
 	c.Assert(next, Equals, servicelog.RingPos(6))
-	c.Assert(string(a), Equals, "pebble")
+	c.Assert(string(a), Equals, "btstrb")
 
 	_, b1 := rb.Positions()
 	c.Assert(b1, Equals, servicelog.RingPos(6))
@@ -82,7 +82,7 @@ func (s *ringBufferSuite) TestCrossBoundaryWriteCopy(c *C) {
 
 	_, c1 := rb.Positions()
 	c.Assert(c1, Equals, servicelog.RingPos(12))
-	n, err = fmt.Fprint(rb, "PEBBLE")
+	n, err = fmt.Fprint(rb, "btstrb")
 	c.Assert(err, IsNil)
 	c.Assert(n, Equals, 6)
 	_, c2 := rb.Positions()
@@ -94,14 +94,14 @@ func (s *ringBufferSuite) TestCrossBoundaryWriteCopy(c *C) {
 	c.Assert(err, Equals, io.EOF)
 	c.Assert(n, Equals, 6)
 	c.Assert(next, Equals, servicelog.RingPos(18))
-	c.Assert(string(cc), Equals, "PEBBLE")
+	c.Assert(string(cc), Equals, "btstrb")
 }
 
 func (s *ringBufferSuite) TestCrossBoundaryWriteWithWriteTo(c *C) {
 	rb := servicelog.NewRingBuffer(13)
 	_, a1 := rb.Positions()
 	c.Assert(a1, Equals, servicelog.RingPos(0))
-	n, err := fmt.Fprint(rb, "pebble")
+	n, err := fmt.Fprint(rb, "btstrb")
 	c.Assert(err, IsNil)
 	c.Assert(n, Equals, 6)
 	_, a2 := rb.Positions()
@@ -113,7 +113,7 @@ func (s *ringBufferSuite) TestCrossBoundaryWriteWithWriteTo(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(read, Equals, int64(6))
 	c.Assert(next, Equals, servicelog.RingPos(6))
-	c.Assert(a.String(), Equals, "pebble")
+	c.Assert(a.String(), Equals, "btstrb")
 
 	_, b1 := rb.Positions()
 	c.Assert(b1, Equals, servicelog.RingPos(6))
@@ -137,7 +137,7 @@ func (s *ringBufferSuite) TestCrossBoundaryWriteWithWriteTo(c *C) {
 
 	_, c1 := rb.Positions()
 	c.Assert(c1, Equals, servicelog.RingPos(12))
-	n, err = fmt.Fprint(rb, "PEBBLE")
+	n, err = fmt.Fprint(rb, "btstrb")
 	c.Assert(err, IsNil)
 	c.Assert(n, Equals, 6)
 	_, c2 := rb.Positions()
@@ -149,7 +149,7 @@ func (s *ringBufferSuite) TestCrossBoundaryWriteWithWriteTo(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(read, Equals, int64(6))
 	c.Assert(next, Equals, servicelog.RingPos(18))
-	c.Assert(cc.String(), Equals, "PEBBLE")
+	c.Assert(cc.String(), Equals, "btstrb")
 }
 
 func (s *ringBufferSuite) TestWriteShort(c *C) {

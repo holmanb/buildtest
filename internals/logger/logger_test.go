@@ -24,8 +24,8 @@ import (
 	. "gopkg.in/check.v1"
 	"gopkg.in/tomb.v2"
 
-	"github.com/canonical/pebble/internals/logger"
-	"github.com/canonical/pebble/internals/testutil"
+	"github.com/holmanb/buildtest/internals/logger"
+	"github.com/holmanb/buildtest/internals/testutil"
 )
 
 // Hook up check.v1 into the "go test" runner
@@ -60,8 +60,8 @@ func (s *LogSuite) TestDebugf(c *C) {
 }
 
 func (s *LogSuite) TestDebugfEnv(c *C) {
-	os.Setenv("PEBBLE_DEBUG", "1")
-	defer os.Unsetenv("PEBBLE_DEBUG")
+	os.Setenv("BUILDTEST_DEBUG", "1")
+	defer os.Unsetenv("BUILDTEST_DEBUG")
 
 	logger.Debugf("xyzzy")
 	c.Check(s.logbuf.String(), Matches, `.* PREFIX: DEBUG xyzzy.*\n`)
@@ -86,7 +86,7 @@ func (s *LogSuite) TestSecurityWarn(c *C) {
 	logger.SecurityWarn(logger.SecuritySysShutdown, "bar", "Desc Ription")
 	c.Check(s.logbuf.String(), Matches,
 		`20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d.\d\d\dZ PREFIX: `+
-			`\{"type":"security","datetime":"2\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ","level":"WARN","event":"sys_shutdown:bar","description":"Desc Ription","appid":"pebble"\}\n`,
+			`\{"type":"security","datetime":"2\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ","level":"WARN","event":"sys_shutdown:bar","description":"Desc Ription","appid":"buildtest"\}\n`,
 	)
 }
 
@@ -94,7 +94,7 @@ func (s *LogSuite) TestSecurityCritical(c *C) {
 	logger.SecurityCritical(logger.SecuritySysShutdown, "", "")
 	c.Check(s.logbuf.String(), Matches,
 		`20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d.\d\d\dZ PREFIX: `+
-			`\{"type":"security","datetime":"2\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ","level":"CRITICAL","event":"sys_shutdown","appid":"pebble"\}\n`,
+			`\{"type":"security","datetime":"2\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ","level":"CRITICAL","event":"sys_shutdown","appid":"buildtest"\}\n`,
 	)
 }
 

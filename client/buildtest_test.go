@@ -21,7 +21,7 @@ import (
 
 	. "gopkg.in/check.v1"
 
-	"github.com/canonical/pebble/client"
+	"github.com/holmanb/buildtest/client"
 )
 
 func (cs *clientSuite) TestBuildTestRequestFormat(c *C) {

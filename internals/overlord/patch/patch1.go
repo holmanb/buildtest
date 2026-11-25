@@ -15,7 +15,7 @@
 package patch
 
 import (
-	"github.com/canonical/pebble/internals/overlord/state"
+	"github.com/holmanb/buildtest/internals/overlord/state"
 )
 
 func init() {

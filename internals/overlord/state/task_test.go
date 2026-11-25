@@ -21,8 +21,8 @@ import (
 
 	. "gopkg.in/check.v1"
 
-	"github.com/canonical/pebble/internals/overlord/state"
-	"github.com/canonical/pebble/internals/testutil"
+	"github.com/holmanb/buildtest/internals/overlord/state"
+	"github.com/holmanb/buildtest/internals/testutil"
 )
 
 type taskSuite struct{}

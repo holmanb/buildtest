@@ -17,7 +17,7 @@ package osutil_test
 import (
 	"testing"
 
-	"github.com/canonical/pebble/internals/testutil"
+	"github.com/holmanb/buildtest/internals/testutil"
 	. "gopkg.in/check.v1"
 )
 

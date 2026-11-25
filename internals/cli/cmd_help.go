@@ -24,7 +24,7 @@ import (
 
 	"github.com/canonical/go-flags"
 
-	cmdpkg "github.com/canonical/pebble/cmd"
+	cmdpkg "github.com/holmanb/buildtest/cmd"
 )
 
 const cmdHelpSummary = "Show help about a command"
@@ -180,40 +180,16 @@ type HelpCategory struct {
 // HelpCategories helps us by grouping commands
 var HelpCategories = []HelpCategory{{
 	Label:       "Run",
-	Description: "run the service manager",
+	Description: "run the daemon",
 	Commands:    []string{"run"},
 }, {
 	Label:       "Info",
-	Description: "help and version information",
-	Commands:    []string{"help", "version"},
-}, {
-	Label:       "Plan",
-	Description: "view and change configuration",
-	Commands:    []string{"add", "plan", "replan"},
-}, {
-	Label:       "Services",
-	Description: "manage services",
-	Commands:    []string{"services", "logs", "start", "restart", "signal", "stop"},
-}, {
-	Label:       "Checks",
-	Description: "manage health checks",
-	Commands:    []string{"checks", "check", "start-checks", "stop-checks", "health"},
-}, {
-	Label:       "Files",
-	Description: "work with files and execute commands",
-	Commands:    []string{"push", "pull", "ls", "mkdir", "rm", "exec"},
+	Description: "help, version, and health information",
+	Commands:    []string{"help", "version", "health"},
 }, {
 	Label:       "Changes",
 	Description: "manage changes and their tasks",
 	Commands:    []string{"changes", "tasks"},
-}, {
-	Label:       "Notices",
-	Description: "manage notices and warnings",
-	Commands:    []string{"warnings", "okay", "notices", "notice", "notify"},
-}, {
-	Label:       "Identities", // special-cased in printShortHelp
-	Description: "manage user identities",
-	Commands:    []string{"identities", "identity", "add-identities", "update-identities", "remove-identities"},
 }, {
 	Label:       "Build",
 	Description: "build source and run tests",
@@ -222,16 +198,16 @@ var HelpCategories = []HelpCategory{{
 
 var (
 	HelpHeader = strings.TrimSpace(`
-{{.DisplayName}} lets you control services and perform management actions on
-the system that is running them.
+{{.DisplayName}} lets you build source and run tests on the system that is
+running the daemon.
 `)
 	pebbleUsage               = "Usage: {{.ProgramName}} <command> [<options>...]"
 	pebbleHelpCategoriesIntro = "Commands can be classified as follows:"
 
 	HelpFooter = strings.TrimSpace(`
-Set the PEBBLE environment variable to override the configuration directory
-(which defaults to {{.DefaultDir}}). Set PEBBLE_SOCKET to override
-the unix socket used for the API (defaults to $PEBBLE/.pebble.socket).
+Set the BUILDTEST environment variable to override the configuration directory
+(which defaults to {{.DefaultDir}}). Set BUILDTEST_SOCKET to override
+the unix socket used for the API (defaults to $BUILDTEST/.buildtest.socket).
 `)
 
 	pebbleHelpAllFooter = "For more information about a command, run '{{.ProgramName}} help <command>'."
@@ -270,10 +246,6 @@ func printShortHelp() {
 	}
 	for _, categ := range HelpCategories {
 		commandsStr := strings.Join(categ.Commands, ", ")
-		if categ.Label == "Identities" {
-			// Special case for identities command to avoid a long list here
-			commandsStr = "identities --help"
-		}
 		fmt.Fprintf(Stdout, "%*s: %s\n", maxLen+2, categ.Label, commandsStr)
 	}
 	printHelpFooter()

@@ -22,7 +22,7 @@ import (
 
 	. "gopkg.in/check.v1"
 
-	"github.com/canonical/pebble/internals/overlord/buildteststate"
+	"github.com/holmanb/buildtest/internals/overlord/buildteststate"
 )
 
 type tarballSuite struct{}

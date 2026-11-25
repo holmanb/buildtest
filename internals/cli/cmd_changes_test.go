@@ -27,7 +27,7 @@ import (
 
 	"gopkg.in/check.v1"
 
-	"github.com/canonical/pebble/internals/cli"
+	"github.com/holmanb/buildtest/internals/cli"
 )
 
 var fakeChangeJSON = `{"type": "sync", "result": {
@@ -101,9 +101,52 @@ func (s *PebbleSuite) TestChangesExtraArgs(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
+func (s *PebbleSuite) TestChangesAbort(c *check.C) {
+	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
+		c.Check(r.Method, check.Equals, "POST")
+		c.Check(r.URL.Path, check.Equals, "/v1/changes/42")
+		body := DecodedRequestBody(c, r)
+		c.Check(body, check.DeepEquals, map[string]any{"action": "abort"})
+		fmt.Fprintln(w, fakeChangeJSON)
+	})
+
+	rest, err := cli.ParserForTest().ParseArgs([]string{"changes", "--abort", "42"})
+	c.Assert(err, check.IsNil)
+	c.Check(rest, check.HasLen, 0)
+	c.Check(s.Stdout(), check.Equals, "Change 42 aborted.\n")
+	c.Check(s.Stderr(), check.Equals, "")
+}
+
+func (s *PebbleSuite) TestChangesAbortNoID(c *check.C) {
+	_, err := cli.ParserForTest().ParseArgs([]string{"changes", "--abort"})
+	c.Assert(err, check.ErrorMatches, "please provide a change ID to abort")
+	c.Check(s.Stdout(), check.Equals, "")
+	c.Check(s.Stderr(), check.Equals, "")
+}
+
+func (s *PebbleSuite) TestChangesAbortInvalidID(c *check.C) {
+	_, err := cli.ParserForTest().ParseArgs([]string{"changes", "--abort", "abc"})
+	c.Assert(err, check.ErrorMatches, `invalid change ID "abc"`)
+	c.Check(s.Stdout(), check.Equals, "")
+	c.Check(s.Stderr(), check.Equals, "")
+}
+
+func (s *PebbleSuite) TestChangesAbortFails(c *check.C) {
+	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
+		c.Check(r.Method, check.Equals, "POST")
+		c.Check(r.URL.Path, check.Equals, "/v1/changes/42")
+		fmt.Fprintln(w, `{"type":"error", "result": {"message": "cannot abort change 42 with nothing pending"}}`)
+	})
+
+	_, err := cli.ParserForTest().ParseArgs([]string{"changes", "--abort", "42"})
+	c.Assert(err, check.ErrorMatches, "cannot abort change 42 with nothing pending")
+	c.Check(s.Stdout(), check.Equals, "")
+	c.Check(s.Stderr(), check.Equals, "")
+}
+
 func (s *PebbleSuite) TestChangesAllDigitsSuggestion(c *check.C) {
 	rest, err := cli.ParserForTest().ParseArgs([]string{"changes", "42"})
-	c.Assert(err, check.ErrorMatches, `'pebble changes' command expects a service name, try 'pebble tasks 42'`)
+	c.Assert(err, check.ErrorMatches, `'buildtest changes' command expects a service name, try 'buildtest tasks 42'`)
 	c.Check(rest, check.HasLen, 1)
 	c.Check(s.Stdout(), check.Equals, "")
 	c.Check(s.Stderr(), check.Equals, "")
@@ -371,7 +414,7 @@ func (s *PebbleSuite) TestChangeSimpleRebooting(c *check.C) {
 
 	_, err := cli.ParserForTest().ParseArgs([]string{"tasks", "42"})
 	c.Assert(err, check.IsNil)
-	c.Check(s.Stderr(), check.Equals, "WARNING: Pebble is about to reboot the system\n")
+	c.Check(s.Stderr(), check.Equals, "WARNING: Buildtest is about to reboot the system\n")
 }
 
 func (s *PebbleSuite) TestChangeSimpleUnknownMaintenance(c *check.C) {

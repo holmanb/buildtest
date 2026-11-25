@@ -24,7 +24,7 @@ import (
 	"github.com/gorilla/websocket"
 	"gopkg.in/tomb.v2"
 
-	"github.com/canonical/pebble/internals/overlord/state"
+	"github.com/holmanb/buildtest/internals/overlord/state"
 )
 
 // Export for testing.

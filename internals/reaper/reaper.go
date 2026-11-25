@@ -26,7 +26,7 @@ import (
 	"golang.org/x/sys/unix"
 	"gopkg.in/tomb.v2"
 
-	"github.com/canonical/pebble/internals/logger"
+	"github.com/holmanb/buildtest/internals/logger"
 )
 
 var (

@@ -1,43 +1,41 @@
-name: pebble
-adopt-info: pebble-release-data
-summary: Pebble - take control of your internal daemons!
+name: buildtest
+adopt-info: buildtest-release-data
+summary: Buildtest - remotely build and test, over HTTP
 description: |
-  Pebble helps you to orchestrate a set of local service processes
-  as an organized set. It resembles well-known tools such as supervisord,
-  runit, or s6, in that it can easily manage non-system processes
-  independently from system services, but it was designed with unique
-  features that help with more specific use cases.
+  Buildtest is a minimal daemon for remote build-and-test jobs. Upload a
+  source tree, and the daemon builds it with snapcraft and runs your spread
+  tests, streaming output back to the client in real time. When a build
+  fails, attach an interactive terminal and debug it in place.
 
   **Usage**
 
-  You can use the `pebble` command to:
+  You can use the `buildtest` command to:
 
-  * Start and stop services that are defined in Pebble's service configuration.
-  * Modify Pebble's service configuration by adding or removing layers.
-  * Check the health of services.
-  * Manage services remotely, as a client interacting with Pebble in a separate system.
-  * And more!
+  * Run the daemon: `buildtest run --http=:8000`
+  * Upload source, build it, and run tests: `buildtest build-test <dir> --stream`
+  * Inspect build and test runs: `buildtest changes`, `buildtest tasks`
+  * Abort a stuck build: `buildtest changes --abort <id>`
 
-  Pebble stores its service configuration in the `$PEBBLE/layers` directory.
-  When Pebble is installed as a snap, the `PEBBLE` environment variable is
-  set to `$HOME/snap/pebble/<snap_revision>` by default.
+  Buildtest stores its state in the directory given by `$BUILDTEST`
+  (defaulting to `$HOME/snap/buildtest/<snap_revision>` when installed as
+  a snap).
 
   **Documentation**
 
-  To learn more about Pebble, see https://ubuntu.com/docs/pebble/.
-issues: https://github.com/canonical/pebble/issues
-source-code: https://github.com/canonical/pebble
+  See https://github.com/holmanb/buildtest
+issues: https://github.com/holmanb/buildtest/issues
+source-code: https://github.com/holmanb/buildtest
 license: GPL-3.0
 base: bare
 build-base: core22
 confinement: classic
 
 apps:
-  pebble:
-    command: pebble-wrapper
+  buildtest:
+    command: buildtest-wrapper
 
 parts:
-  pebble:
+  buildtest:
     plugin: go
     source: .
     build-snaps:
@@ -54,23 +52,23 @@ parts:
         export GOARCH=arm
         export GOARM=6
       fi
-      CGO_ENABLED=0 go build -trimpath -ldflags=-w -ldflags=-s -o $CRAFT_PART_INSTALL/bin/pebble ./cmd/pebble
+      CGO_ENABLED=0 go build -trimpath -ldflags=-w -ldflags=-s -o $CRAFT_PART_INSTALL/bin/buildtest ./cmd/buildtest
 
-  pebble-release-data:
+  buildtest-release-data:
     plugin: nil
     source: .
     override-build: |
-      version="$(${CRAFT_STAGE}/bin/pebble version --client)"
+      version="$(${CRAFT_STAGE}/bin/buildtest version --client)"
 
       # Set snap version
       craftctl set version="$version"
 
-      # Pebble releases are semantically versioned and have a "v" prefix
+      # Buildtest releases are semantically versioned and have a "v" prefix
       [[ "${version}" == *"git"* ]] && grade=devel || grade=stable
       craftctl set grade="$grade"
-    after: [pebble]
+    after: [buildtest]
 
-  # Dump the pebble-wrapper into the snap.
-  pebble-wrapper:
+  # Dump the buildtest-wrapper into the snap.
+  buildtest-wrapper:
     plugin: dump
     source: ./snap/local

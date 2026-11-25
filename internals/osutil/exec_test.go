@@ -26,7 +26,7 @@ import (
 	. "gopkg.in/check.v1"
 	"gopkg.in/tomb.v2"
 
-	"github.com/canonical/pebble/internals/osutil"
+	"github.com/holmanb/buildtest/internals/osutil"
 )
 
 type execSuite struct{}

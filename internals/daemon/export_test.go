@@ -18,9 +18,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/canonical/pebble/internals/overlord"
-	"github.com/canonical/pebble/internals/overlord/checkstate"
-	"github.com/canonical/pebble/internals/overlord/state"
+	"github.com/holmanb/buildtest/internals/overlord/state"
 )
 
 func FakeMuxVars(f func(*http.Request) map[string]string) (restore func()) {
@@ -36,14 +34,6 @@ func FakeStateEnsureBefore(f func(st *state.State, d time.Duration)) (restore fu
 	stateEnsureBefore = f
 	return func() {
 		stateEnsureBefore = old
-	}
-}
-
-func FakeGetChecks(f func(o *overlord.Overlord) ([]*checkstate.CheckInfo, error)) (restore func()) {
-	old := getChecks
-	getChecks = f
-	return func() {
-		getChecks = old
 	}
 }
 
@@ -63,10 +53,3 @@ func FakeSyscallReboot(f func(cmd int) error) (restore func()) {
 	}
 }
 
-func FakePairingWindowEnabled(f func(d *Daemon) bool) (restore func()) {
-	old := pairingWindowEnabled
-	pairingWindowEnabled = f
-	return func() {
-		pairingWindowEnabled = old
-	}
-}

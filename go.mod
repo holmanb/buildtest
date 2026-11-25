@@ -1,4 +1,4 @@
-module github.com/canonical/pebble
+module github.com/holmanb/buildtest
 
 go 1.26.4
 

@@ -23,8 +23,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/canonical/pebble/internals/logger"
-	"github.com/canonical/pebble/internals/overlord/state"
+	"github.com/holmanb/buildtest/internals/logger"
+	"github.com/holmanb/buildtest/internals/overlord/state"
 )
 
 // Level is the current implemented patch level of the state format and content.

@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/canonical/pebble/internals/logger"
+	"github.com/holmanb/buildtest/internals/logger"
 )
 
 type formatter struct {

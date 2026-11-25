@@ -20,8 +20,8 @@ import (
 
 	. "gopkg.in/check.v1"
 
-	"github.com/canonical/pebble/internals/overlord/patch"
-	"github.com/canonical/pebble/internals/overlord/state"
+	"github.com/holmanb/buildtest/internals/overlord/patch"
+	"github.com/holmanb/buildtest/internals/overlord/state"
 )
 
 // Analogous to patch1.go itself, this is available as inspiration for actual patch tests.

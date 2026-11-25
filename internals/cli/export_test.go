@@ -19,7 +19,7 @@ import (
 
 	"github.com/canonical/go-flags"
 
-	"github.com/canonical/pebble/client"
+	"github.com/holmanb/buildtest/client"
 )
 
 func RunMain() error {
@@ -62,11 +62,7 @@ var (
 	ColorColorTable = color
 	NoEscColorTable = noesc
 
-	MaybePresentWarnings = maybePresentWarnings
-
 	MaybeCopyPebbleDir = maybeCopyPebbleDir
-
-	SetupTLSOptions = setupTLSOptions
 
 	WithDefaultRunOptions = withDefaultRunOptions
 
@@ -78,18 +74,6 @@ type CmdRun = cmdRun
 
 // CmdRunHTTPAddress calls the unexported httpAddress method on CmdRun.
 func CmdRunHTTPAddress(cmd *CmdRun) string { return cmd.httpAddress() }
-
-// CmdRunHTTPSAddress calls the unexported httpsAddress method on CmdRun.
-func CmdRunHTTPSAddress(cmd *CmdRun) string { return cmd.httpsAddress() }
-
-// CmdRunSocketClient calls the unexported socketClient method on CmdRun.
-func CmdRunSocketClient(cmd *CmdRun) (*client.Client, error) { return cmd.socketClient()
-}
-
-// NewCmdRunWithSocket creates a cmdRun with the given socket path, for testing.
-func NewCmdRunWithSocket(socketPath string) *CmdRun {
-	return &cmdRun{socketPath: socketPath}
-}
 
 func FakeIsStdoutTTY(t bool) (restore func()) {
 	oldIsStdoutTTY := isStdoutTTY

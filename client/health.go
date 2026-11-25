@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Canonical Ltd
+// Copyright (c) 2026 Canonical Ltd
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License version 3 as
@@ -16,47 +16,48 @@ package client
 
 import (
 	"context"
-	"net/url"
+	"fmt"
 )
 
-// HealthOptions holds query options to pass to a Health call.
+// HealthOptions holds the options for a Health request.
 type HealthOptions struct {
-	// Level may be set to CheckAlive, to query whether alive checks are up, and
-	// CheckReady, to query whether both alive and ready checks are up.
-	// Defaults to CheckReady if unset.
-	Level CheckLevel
+	// Level is the health level to check ("alive" or "ready"). If empty,
+	// all checks are considered.
+	Level string
 
-	// Names defines which checks should be considered for the query. Defaults to all.
+	// Names is the list of check names to consider. If empty, all checks
+	// are considered.
 	Names []string
 }
 
-type healthInfo struct {
+// HealthInfo holds the health information returned by the daemon.
+type HealthInfo struct {
 	Healthy bool `json:"healthy"`
 }
 
-// Health fetches healthy status of specified checks.
-func (client *Client) Health(opts *HealthOptions) (health bool, err error) {
-	query := make(url.Values)
-	if opts.Level != UnsetLevel {
-		query.Set("level", string(opts.Level))
-	}
-	if len(opts.Names) > 0 {
-		query["names"] = opts.Names
+// Health fetches the health of the daemon.
+func (client *Client) Health(opts *HealthOptions) (*HealthInfo, error) {
+	query := make(map[string][]string)
+	if opts != nil {
+		if opts.Level != "" {
+			query["level"] = []string{opts.Level}
+		}
+		if len(opts.Names) > 0 {
+			query["names"] = opts.Names
+		}
 	}
 
-	var info healthInfo
+	var health HealthInfo
 	resp, err := client.Requester().Do(context.Background(), &RequestOptions{
-		Type:   SyncRequest,
-		Method: "GET",
-		Path:   "/v1/health",
-		Query:  query,
+		Type:  SyncRequest,
+		Path:  "/v1/health",
+		Query: query,
 	})
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	err = resp.DecodeResult(&info)
-	if err != nil {
-		return false, err
+	if err := resp.DecodeResult(&health); err != nil {
+		return nil, fmt.Errorf("cannot decode health result: %w", err)
 	}
-	return info.Healthy, nil
+	return &health, nil
 }

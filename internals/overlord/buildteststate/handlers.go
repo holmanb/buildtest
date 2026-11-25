@@ -29,11 +29,11 @@ import (
 	"golang.org/x/sys/unix"
 	"gopkg.in/tomb.v2"
 
-	"github.com/canonical/pebble/internals/logger"
-	"github.com/canonical/pebble/internals/overlord/state"
-	"github.com/canonical/pebble/internals/ptyutil"
-	"github.com/canonical/pebble/internals/reaper"
-	"github.com/canonical/pebble/internals/wsutil"
+	"github.com/holmanb/buildtest/internals/logger"
+	"github.com/holmanb/buildtest/internals/overlord/state"
+	"github.com/holmanb/buildtest/internals/ptyutil"
+	"github.com/holmanb/buildtest/internals/reaper"
+	"github.com/holmanb/buildtest/internals/wsutil"
 )
 
 // doBuild handles the "build-test-build" task kind.

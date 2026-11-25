@@ -31,10 +31,10 @@ import (
 
 	. "gopkg.in/check.v1"
 
-	"github.com/canonical/pebble/internals/osutil"
-	"github.com/canonical/pebble/internals/osutil/squashfs"
-	"github.com/canonical/pebble/internals/systemd"
-	"github.com/canonical/pebble/internals/testutil"
+	"github.com/holmanb/buildtest/internals/osutil"
+	"github.com/holmanb/buildtest/internals/osutil/squashfs"
+	"github.com/holmanb/buildtest/internals/systemd"
+	"github.com/holmanb/buildtest/internals/testutil"
 )
 
 type testreporter struct {

@@ -1,0 +1,45 @@
+# Buildtest user service
+#
+# This systemd user unit runs the Buildtest daemon under the current user,
+# listening on port 8000 (all interfaces). Install with systemd/install.sh,
+# which copies the unit to ~/.config/systemd/user/ and enables it.
+#
+# Usage:
+#   systemctl --user start buildtest
+#   systemctl --user status buildtest
+#   systemctl --user stop buildtest
+#
+# Configuration:
+#   Override the Buildtest directory or HTTP address with a drop-in:
+#     systemctl --user edit buildtest
+#     [Service]
+#     Environment=BUILDTEST=/path/to/buildtest-dir
+#     Environment=BUILDTEST_HTTP=127.0.0.1:8000
+
+[Unit]
+Description=Buildtest daemon
+Documentation=https://github.com/holmanb/buildtest
+
+[Service]
+Type=notify
+
+# Buildtest directory defaults to ~/.local/share/buildtest/default for user
+# services. Override with BUILDTEST= in a drop-in file (see above).
+Environment=BUILDTEST=%h/.local/share/buildtest/default
+
+# Create the Buildtest directory on first start and listen on port 8000.
+ExecStart=%h/bin/buildtest run --create-dirs --http :8000
+
+# Restart on failure, but not on clean exit or the special restart exit
+# codes that Buildtest uses to signal service/check failure restarts.
+Restart=on-failure
+RestartSec=5s
+
+# Buildtest exits with these codes to ask systemd to restart the daemon:
+# 10 (service failure), 11 (check failure), 42 (wait for socket activation).
+# They must NOT be listed in SuccessExitStatus, or Restart=on-failure will
+# treat them as success and refuse to restart the daemon.
+RestartForceExitStatus=10 11 42
+
+[Install]
+WantedBy=default.target
