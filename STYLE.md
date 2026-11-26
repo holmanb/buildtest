@@ -390,10 +390,10 @@ Where possible, start error messages with "cannot X" for consistency.
 
 When creating an error message, think from the user's perspective, and see what specific messages would help them the most.
 
-For example, if the user input layer label is `pebble-test` but pebble-* is reserved, be specific in your error message:
+For example, if the user passes a source directory that doesn't exist, be specific in your error message:
 
-- Avoid: `fmt.Errorf("cannot use reserved layer label %q", layer.Label)`
-- Prefer: `errors.New("cannot use reserved label prefix "pebble-")`
+- Avoid: `fmt.Errorf("invalid source path %q", sourcePath)`
+- Prefer: `fmt.Errorf("source path %q does not exist", sourcePath)`
 
 For another example:
 
