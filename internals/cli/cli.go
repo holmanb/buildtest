@@ -63,12 +63,12 @@ type CmdInfo struct {
 	Name string
 
 	// Summary is a single-line help string that will be displayed
-	// in the full Pebble help manual (i.e. help --all)
+	// in the full Buildtest help manual (i.e. help --all)
 	Summary string
 
 	// Description contains exhaustive documentation about the command,
 	// that will be reflected in the specific help manual for the
-	// command, and in the Pebble man page.
+	// command, and in the Buildtest man page.
 	Description string
 
 	// New is a function that creates a new instance of the command.
@@ -92,7 +92,7 @@ type CmdInfo struct {
 	Debug bool
 }
 
-// commands holds information about all the regular Pebble commands.
+// commands holds information about all the regular Buildtest commands.
 var commands []*CmdInfo
 
 // AddCommand adds a command to the top-level parser.
@@ -246,7 +246,7 @@ var (
 	osExit      = os.Exit
 )
 
-// exitStatus can be used in panic(&exitStatus{code}) to cause Pebble's main
+// exitStatus can be used in panic(&exitStatus{code}) to cause Buildtest's main
 // function to exit with a given exit code, for the rare cases when you want
 // to return an exit code other than 0 or 1, or when an error return is not
 // possible.
@@ -259,7 +259,7 @@ func (e *exitStatus) Error() string {
 }
 
 type RunOptions struct {
-	// when starting a daemon ("pebble run"), the ClientConfig.Socket value
+	// when starting a daemon ("buildtest run"), the ClientConfig.Socket value
 	// is also used as the Unix domain socket path for the listening socket
 	ClientConfig *client.Config
 	Logger       logger.Logger

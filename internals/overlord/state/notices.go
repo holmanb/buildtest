@@ -190,7 +190,7 @@ const (
 	// status was updated. The key for change-update notices is the change ID.
 	ChangeUpdateNotice NoticeType = "change-update"
 
-	// A custom notice reported via the Pebble client API or "pebble notify".
+	// A custom notice reported via the Buildtest client API or "buildtest notify".
 	// The key and data fields are provided by the user. The key must be in
 	// the format "example.com/path" to ensure well-namespaced notice keys.
 	CustomNotice NoticeType = "custom"

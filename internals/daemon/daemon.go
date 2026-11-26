@@ -569,7 +569,7 @@ func (d *Daemon) Stop(sigCh chan<- os.Signal) error {
 	if err != nil {
 		// do not stop the shutdown even if the tomb errors
 		// because we already scheduled a slow shutdown and
-		// exiting here will just restart pebble (via systemd)
+			// exiting here will just restart buildtest (via systemd)
 		// which will lead to confusing results.
 		if requestedRestart == restart.RestartSystem {
 			logger.Noticef("WARNING: cannot stop daemon: %v", err)
@@ -631,7 +631,7 @@ func (d *Daemon) doReboot(sigCh chan<- os.Signal, waitTimeout time.Duration) err
 		return err
 	}
 	// ask for shutdown and wait for it to happen.
-	// if we exit, pebble will be restarted by systemd
+	// if we exit, buildtest will be restarted by systemd
 	if err := rebootHandler(rebootDelay); err != nil {
 		return err
 	}
@@ -768,12 +768,12 @@ func (d *Daemon) RebootDidNotHappen(st *state.State) error {
 		// might get rolled back!!
 		restart.ClearReboot(st)
 		clearReboot(st)
-		logger.Noticef("Pebble was restarted while a system restart was expected, pebble retried to schedule and waited again for a system restart %d times and is giving up", rebootMaxTentatives)
+				logger.Noticef("Buildtest was restarted while a system restart was expected, buildtest retried to schedule and waited again for a system restart %d times and is giving up", rebootMaxTentatives)
 		return nil
 	}
 	st.Set("daemon-system-restart-tentative", nTentative)
 	d.state = st
-	logger.Noticef("Pebble was restarted while a system restart was expected, pebble will try to schedule and wait for a system restart again (tenative %d/%d)", nTentative, rebootMaxTentatives)
+		logger.Noticef("Buildtest was restarted while a system restart was expected, buildtest will try to schedule and wait for a system restart again (tenative %d/%d)", nTentative, rebootMaxTentatives)
 	return errExpectedReboot
 }
 

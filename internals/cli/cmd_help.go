@@ -65,11 +65,11 @@ func addHelp(parser *flags.Parser) error {
 	help.ShowHelp = func() error {
 		// this function is called via --help (or -h). In that
 		// case, parser.Command.Active should be the command
-		// on which help is being requested (like "pebble foo
+		// on which help is being requested (like "buildtest foo
 		// --help", active is foo), or nil in the toplevel.
 		if parser.Command.Active == nil {
-			// this means *either* a bare 'pebble --help',
-			// *or* 'pebble --help command'
+			// this means *either* a bare 'buildtest --help',
+			// *or* 'buildtest --help command'
 			//
 			// If we return nil in the first case go-flags
 			// will throw up an ErrCommandRequired on its
@@ -162,7 +162,7 @@ func (cmd cmdHelp) Execute(args []string) error {
 			}
 			return fmt.Errorf("unknown command %q, see '%s'", subname, sug)
 		}
-		// this makes "pebble help foo" work the same as "pebble foo --help"
+		// this makes "buildtest help foo" work the same as "buildtest foo --help"
 		cmd.parser.Command.Active = subcmd
 	}
 	if subcmd != cmd.parser.Command {
@@ -201,8 +201,8 @@ var (
 {{.DisplayName}} lets you build source and run tests on the system that is
 running the daemon.
 `)
-	pebbleUsage               = "Usage: {{.ProgramName}} <command> [<options>...]"
-	pebbleHelpCategoriesIntro = "Commands can be classified as follows:"
+	buildtestUsage               = "Usage: {{.ProgramName}} <command> [<options>...]"
+	buildtestHelpCategoriesIntro = "Commands can be classified as follows:"
 
 	HelpFooter = strings.TrimSpace(`
 Set the BUILDTEST environment variable to override the configuration directory
@@ -210,28 +210,28 @@ Set the BUILDTEST environment variable to override the configuration directory
 the unix socket used for the API (defaults to $BUILDTEST/.buildtest.socket).
 `)
 
-	pebbleHelpAllFooter = "For more information about a command, run '{{.ProgramName}} help <command>'."
-	pebbleHelpFooter    = "For a short summary of all commands, run '{{.ProgramName}} help --all'."
+	buildtestHelpAllFooter = "For more information about a command, run '{{.ProgramName}} help <command>'."
+	buildtestHelpFooter    = "For a short summary of all commands, run '{{.ProgramName}} help --all'."
 )
 
 func printHelpHeader() {
 	fmt.Fprintln(Stdout, applyPersonality(HelpHeader))
 	fmt.Fprintln(Stdout)
-	fmt.Fprintln(Stdout, applyPersonality(pebbleUsage))
+	fmt.Fprintln(Stdout, applyPersonality(buildtestUsage))
 	fmt.Fprintln(Stdout)
-	fmt.Fprintln(Stdout, applyPersonality(pebbleHelpCategoriesIntro))
+	fmt.Fprintln(Stdout, applyPersonality(buildtestHelpCategoriesIntro))
 }
 
 func printHelpAllFooter() {
 	fmt.Fprintln(Stdout)
 	fmt.Fprintln(Stdout, applyPersonality(HelpFooter))
 	fmt.Fprintln(Stdout)
-	fmt.Fprintln(Stdout, applyPersonality(pebbleHelpAllFooter))
+	fmt.Fprintln(Stdout, applyPersonality(buildtestHelpAllFooter))
 }
 
 func printHelpFooter() {
 	printHelpAllFooter()
-	fmt.Fprintln(Stdout, applyPersonality(pebbleHelpFooter))
+	fmt.Fprintln(Stdout, applyPersonality(buildtestHelpFooter))
 }
 
 // this is called when the Execute returns a flags.Error with ErrCommandRequired
@@ -251,7 +251,7 @@ func printShortHelp() {
 	printHelpFooter()
 }
 
-// this is "pebble help --all"
+// this is "buildtest help --all"
 func printLongHelp(parser *flags.Parser) {
 	printHelpHeader()
 	maxLen := 0

@@ -39,7 +39,7 @@ func (s *BuildtestSuite) TestHealth(c *check.C) {
 	restore := fakeArgs("buildtest", "health")
 	defer restore()
 
-	exitCode := cli.PebbleMain()
+	exitCode := cli.BuildtestMain()
 	c.Check(exitCode, check.Equals, 0)
 	c.Check(s.Stdout(), check.Equals, "healthy\n")
 	c.Check(s.Stderr(), check.Equals, "")
@@ -60,7 +60,7 @@ func (s *BuildtestSuite) TestHealthLevel(c *check.C) {
 	restore := fakeArgs("buildtest", "health", "--level", "alive")
 	defer restore()
 
-	exitCode := cli.PebbleMain()
+	exitCode := cli.BuildtestMain()
 	c.Check(exitCode, check.Equals, 1)
 	c.Check(s.Stdout(), check.Equals, "unhealthy\n")
 	c.Check(s.Stderr(), check.Equals, "")
@@ -84,7 +84,7 @@ func (s *BuildtestSuite) TestHealthSpecificChecks(c *check.C) {
 	restore := fakeArgs("buildtest", "health", "--level", "ready", "chk1", "chk3")
 	defer restore()
 
-	exitCode := cli.PebbleMain()
+	exitCode := cli.BuildtestMain()
 	c.Check(exitCode, check.Equals, 0)
 	c.Check(s.Stdout(), check.Equals, "healthy\n")
 	c.Check(s.Stderr(), check.Equals, "")
@@ -94,7 +94,7 @@ func (s *BuildtestSuite) TestHealthBadLevel(c *check.C) {
 	restore := fakeArgs("buildtest", "health", "--level", "foo")
 	defer restore()
 
-	exitCode := cli.PebbleMain()
+	exitCode := cli.BuildtestMain()
 	c.Check(exitCode, check.Equals, 1)
 	c.Check(s.Stdout(), check.Equals, "")
 	c.Check(s.Stderr(), check.Matches, "error: Invalid value .* Allowed values are: alive or ready\n")
@@ -112,7 +112,7 @@ func (s *BuildtestSuite) TestHealthJSON(c *check.C) {
 	restore := fakeArgs("buildtest", "health", "--format", "json")
 	defer restore()
 
-	exitCode := cli.PebbleMain()
+	exitCode := cli.BuildtestMain()
 	c.Check(exitCode, check.Equals, 0)
 	c.Check(s.Stdout(), check.Equals, `{"healthy":true}`+"\n")
 	c.Check(s.Stderr(), check.Equals, "")
@@ -130,7 +130,7 @@ func (s *BuildtestSuite) TestHealthUnhealthyJSON(c *check.C) {
 	restore := fakeArgs("buildtest", "health", "--format", "json")
 	defer restore()
 
-	exitCode := cli.PebbleMain()
+	exitCode := cli.BuildtestMain()
 	// Ensure an unhealthy check does not fail with JSON output.
 	c.Check(exitCode, check.Equals, 0)
 	c.Check(s.Stdout(), check.Equals, `{"healthy":false}`+"\n")
@@ -149,7 +149,7 @@ func (s *BuildtestSuite) TestHealthYAML(c *check.C) {
 	restore := fakeArgs("buildtest", "health", "--format", "yaml")
 	defer restore()
 
-	exitCode := cli.PebbleMain()
+	exitCode := cli.BuildtestMain()
 	c.Check(exitCode, check.Equals, 0)
 	c.Check(s.Stdout(), check.Equals, "healthy: true\n")
 	c.Check(s.Stderr(), check.Equals, "")
@@ -167,7 +167,7 @@ func (s *BuildtestSuite) TestHealthUnhealthyYAML(c *check.C) {
 	restore := fakeArgs("buildtest", "health", "--format", "yaml")
 	defer restore()
 
-	exitCode := cli.PebbleMain()
+	exitCode := cli.BuildtestMain()
 	// Ensure an unhealthy check does not fail with YAML output.
 	c.Check(exitCode, check.Equals, 0)
 	c.Check(s.Stdout(), check.Equals, "healthy: false\n")
@@ -178,7 +178,7 @@ func (s *BuildtestSuite) TestHealthInvalidFormat(c *check.C) {
 	restore := fakeArgs("buildtest", "health", "--format", "foobar")
 	defer restore()
 
-	exitCode := cli.PebbleMain()
+	exitCode := cli.BuildtestMain()
 	c.Check(exitCode, check.Equals, 1)
 	c.Check(s.Stdout(), check.Equals, "")
 	c.Check(s.Stderr(), check.Matches, "error: Invalid value .* Allowed values are: text, json or yaml\n")
@@ -193,7 +193,7 @@ func (s *BuildtestSuite) TestHealthInvalidResponseYAML(c *check.C) {
 	restore := fakeArgs("buildtest", "health", "--format", "yaml")
 	defer restore()
 
-	exitCode := cli.PebbleMain()
+	exitCode := cli.BuildtestMain()
 	c.Check(exitCode, check.Equals, 1)
 }
 
@@ -206,6 +206,6 @@ func (s *BuildtestSuite) TestHealthInvalidResponseJSON(c *check.C) {
 	restore := fakeArgs("buildtest", "health", "--format", "json")
 	defer restore()
 
-	exitCode := cli.PebbleMain()
+	exitCode := cli.BuildtestMain()
 	c.Check(exitCode, check.Equals, 1)
 }

@@ -145,7 +145,7 @@ type doer interface {
 
 // Config allows the user to customize client behavior.
 type Config struct {
-	// BaseURL contains the base URL where the Pebble daemon is expected to be.
+	// BaseURL contains the base URL where the Buildtest daemon is expected to be.
 	// It can be empty for a default behavior of talking over a unix socket.
 	// If the protocol prefix is https://, TLS will be used.
 	BaseURL string
@@ -204,11 +204,11 @@ type Config struct {
 	// alive for later reuse (the default is to keep them alive).
 	DisableKeepAlive bool
 
-	// UserAgent is the User-Agent header sent to the Pebble daemon.
+	// UserAgent is the User-Agent header sent to the Buildtest daemon.
 	UserAgent string
 }
 
-// A Client knows how to talk to the Pebble daemon.
+// A Client knows how to talk to the Buildtest daemon.
 type Client struct {
 	requester Requester
 

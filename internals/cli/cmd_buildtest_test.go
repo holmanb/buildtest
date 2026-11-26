@@ -104,7 +104,7 @@ func (s *BuildtestSuite) TestBuildTestSuccess(c *C) {
 	restore := fakeArgs("buildtest", "build-test", srcDir)
 	defer restore()
 
-	exitCode := cli.PebbleMain()
+	exitCode := cli.BuildtestMain()
 	c.Check(exitCode, Equals, 0)
 
 	output := s.Stdout()
@@ -152,7 +152,7 @@ func (s *BuildtestSuite) TestBuildTestBuildFailure(c *C) {
 	restore := fakeArgs("buildtest", "build-test", srcDir)
 	defer restore()
 
-	exitCode := cli.PebbleMain()
+	exitCode := cli.BuildtestMain()
 	c.Check(exitCode, Equals, 1)
 
 	output := s.Stdout()
@@ -164,7 +164,7 @@ func (s *BuildtestSuite) TestBuildTestNonexistentPath(c *C) {
 	restore := fakeArgs("buildtest", "build-test", "/nonexistent/path")
 	defer restore()
 
-	exitCode := cli.PebbleMain()
+	exitCode := cli.BuildtestMain()
 	c.Check(exitCode, Equals, 1)
 	c.Check(s.Stderr(), Matches, `(?s).*cannot create source tarball.*`)
 }

@@ -91,7 +91,7 @@ func FakeIsStdinTTY(t bool) (restore func()) {
 	}
 }
 
-func PebbleMain() (exitCode int) {
+func BuildtestMain() (exitCode int) {
 	oldOsExit := osExit
 	osExit = func(code int) {
 		panic(&exitStatus{code})

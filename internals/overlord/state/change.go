@@ -307,7 +307,7 @@ func (c *Change) isTaskWaiting(visited map[string]taskWaitComputeStatus, t *Task
 	case taskWaitStatusComputing:
 		// Cyclic dependency detected, return false to short-circuit.
 		logger.Noticef("detected cyclic dependencies for task %q in change %q", t.Kind(), t.Change().Kind())
-		// Make sure errors show up in "pebble change <id>" too
+				// Make sure errors show up in "buildtest tasks <id>" too
 		t.Logf("detected cyclic dependencies for task %q in change %q", t.Kind(), t.Change().Kind())
 		return false
 	case taskWaitStatusWaiting, taskWaitStatusNotWaiting:

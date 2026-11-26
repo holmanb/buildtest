@@ -20,7 +20,7 @@ import (
 	"strings"
 )
 
-// Used to strip the Pebble log prefix, for example: "2006-01-02T15:04:05.000Z [service] "
+// Used to strip the Buildtest log prefix, for example: "2006-01-02T15:04:05.000Z [service] "
 // Timestamp must match format in logger.timestampFormat.
 var timestampServiceRegexp = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \[[^]]+\] `)
 
@@ -44,7 +44,7 @@ func LastLines(logBuffer *RingBuffer, n int, indent string, stripPrefix bool) (s
 	}
 	for i, line := range lines {
 		if stripPrefix {
-			// Strip Pebble timestamp and "[service]" prefix
+			// Strip Buildtest timestamp and "[service]" prefix
 			line = timestampServiceRegexp.ReplaceAllString(line, "")
 		}
 		lines[i] = indent + line

@@ -41,10 +41,10 @@ var (
 	ensureInterval = 5 * time.Minute
 	pruneInterval  = 10 * time.Minute
 
-	// In snapd this is 24h, but that's too short in the context of Pebble.
+	// In snapd this is 24h, but that's too short in the context of Buildtest.
 	pruneWait = 24 * time.Hour * 7
 
-	// In snapd this is 7d, but also increase that in the context of Pebble.
+	// In snapd this is 7d, but also increase that in the context of Buildtest.
 	abortWait = 24 * time.Hour * 14
 
 	// Hold no more than 1000 completed changes, even if they have not yet expired
@@ -206,7 +206,7 @@ func getCurrentBootID() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("fatal: cannot find current boot ID: %v", err)
 	}
-	// If pebble is PID 1 we don't care about /proc/sys/kernel/random/boot_id
+	// If buildtest is PID 1 we don't care about /proc/sys/kernel/random/boot_id
 	// as we are most likely running in a container. LXD mounts it's own boot_id
 	// to correctly emulate the boot_id behaviour of non-containerized systems.
 	// Within containerd/docker, boot_id is consistent with the host, which provides
@@ -225,7 +225,7 @@ func loadState(curBootID, statePath string, restartHandler restart.Handler, back
 	timings := timing.Start("", "", map[string]string{"startup": "load-state"})
 
 	if !osutil.FileExists(statePath) {
-		// fail fast, mostly interesting for tests, this dir is set up by pebble
+			// fail fast, mostly interesting for tests, this dir is set up by buildtest
 		stateDir := filepath.Dir(statePath)
 		if !osutil.IsDirectory(stateDir) {
 			return nil, nil, fmt.Errorf("fatal: directory %q must be present", stateDir)

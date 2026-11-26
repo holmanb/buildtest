@@ -57,7 +57,7 @@ func BenchmarkRingBufferConcurrentSmall(b *testing.B) {
 }
 
 func BenchmarkRingBufferConcurrent(b *testing.B) {
-	payload := []byte("pebblepebblepebblepebble")
+	payload := []byte("buildtestbuildtestbuildtestbuildtest")
 	benchmarkConcurrent(b, payload)
 }
 

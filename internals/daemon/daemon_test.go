@@ -224,7 +224,7 @@ func (s *daemonSuite) TestExplicitPaths(c *C) {
 }
 
 func (s *daemonSuite) TestCommandMethodDispatch(c *C) {
-	fakeUserAgent := "some-agent-talking-to-pebble/1.0"
+	fakeUserAgent := "some-agent-talking-to-buildtest/1.0"
 
 	cmd := &Command{d: s.newDaemon(c)}
 	handler := &fakeHandler{cmd: cmd}
@@ -644,7 +644,7 @@ func (s *daemonSuite) TestRestartShutdownWithSigtermInBetween(c *C) {
 }
 
 // This test tests that when there is a shutdown we close the sigterm
-// handler so that systemd can kill pebble.
+// handler so that systemd can kill buildtest.
 func (s *daemonSuite) TestRestartShutdown(c *C) {
 	oldRebootNoticeWait := rebootNoticeWait
 	oldRebootWaitTimeout := rebootWaitTimeout

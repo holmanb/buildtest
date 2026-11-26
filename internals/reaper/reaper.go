@@ -86,7 +86,7 @@ func Stop() error {
 // process, turning it on if the argument is nonzero, off otherwise.
 //
 // If turning it on, we become the parent of dead child processes rather than
-// PID 1. This allows us to wait for processes that are started by a Pebble
+// PID 1. This allows us to wait for processes that are started by a Buildtest
 // service but then die, to "reap" them (see
 // https://unix.stackexchange.com/a/250156/73491).
 func setChildSubreaper(set int) error {
