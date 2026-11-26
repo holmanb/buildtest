@@ -12,10 +12,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-// Package client implements a Go client for Pebble's HTTP-over-unix-socket
-// API.
+// Package client implements a Go client for Buildtest's HTTP API, served
+// over a Unix socket or TCP (see [Config.BaseURL]).
 //
 // To use the API, first create a client using [New], and then call the
 // methods on the returned [Client] to interact with the API, such as
-// [Client.Start] or [Client.ListFiles].
+// [Client.BuildTest] or [Client.Changes].
 package client

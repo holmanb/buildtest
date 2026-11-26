@@ -116,12 +116,12 @@ func (t TransportType) IsConcealed() bool {
 
 // Options holds the daemon setup required for the initialization of a new daemon.
 type Options struct {
-	// Dir is the pebble directory where all setup is found. Defaults to /var/lib/pebble/default.
+	// Dir is the buildtest directory where all setup is found. Defaults to /var/lib/buildtest/default.
 	Dir string
 
 	// SocketPath is an optional path for the unix socket used for the client
 	// to communicate with the daemon. Defaults to a hidden (dotted) name inside
-	// the pebble directory.
+	// the buildtest directory.
 	SocketPath string
 
 	// HTTPAddress is the address for the plain HTTP API server, for example

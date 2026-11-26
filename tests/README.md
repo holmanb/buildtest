@@ -1,6 +1,6 @@
-# Pebble Integration Tests
+# Buildtest Integration Tests
 
-This directory holds a suite of integration tests for end-to-end tests of things like pebble run. They use the standard go test runner, but are only executed if you set the integration build constraint.
+This directory holds a suite of integration tests for end-to-end tests of things like buildtest run. They use the standard go test runner, but are only executed if you set the integration build constraint.
 
 ## Run Tests
 
@@ -8,12 +8,12 @@ This directory holds a suite of integration tests for end-to-end tests of things
 go test -count=1 -tags=integration ./tests/
 ```
 
-The above command will build Pebble first, then run tests with it.
+The above command will build Buildtest first, then run tests with it.
 
-To use an existing Pebble binary rather than building one, you can explicitly set the flag `-pebblebin`. For example, the following command will use a pre-built Pebble at `/home/ubuntu/pebble`:
+To use an existing Buildtest binary rather than building one, you can explicitly set the flag `-buildtestbin`. For example, the following command will use a pre-built Buildtest at `/home/ubuntu/buildtest`:
 
 ```bash
-go test -v -count=1 -tags=integration ./tests -pebblebin=/home/ubuntu/pebble
+go test -v -count=1 -tags=integration ./tests -buildtestbin=/home/ubuntu/buildtest
 ```
 
 ## Developing
