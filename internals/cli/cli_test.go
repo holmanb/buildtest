@@ -23,7 +23,7 @@ func Test(t *testing.T) {
 	testutil.PrintGoroutineLeaks(t, TestingT)
 }
 
-type BasePebbleSuite struct {
+type BaseBuildtestSuite struct {
 	testutil.BaseTest
 	stdin     *bytes.Buffer
 	stdout    *bytes.Buffer
@@ -34,11 +34,11 @@ type BasePebbleSuite struct {
 	AuthFile string
 }
 
-func (s *BasePebbleSuite) readPassword(fd int) ([]byte, error) {
+func (s *BaseBuildtestSuite) readPassword(fd int) ([]byte, error) {
 	return []byte(s.password), nil
 }
 
-func (s *BasePebbleSuite) SetUpTest(c *C) {
+func (s *BaseBuildtestSuite) SetUpTest(c *C) {
 	s.BaseTest.SetUpTest(c)
 
 	s.pebbleDir = c.MkDir()
@@ -65,7 +65,7 @@ func (s *BasePebbleSuite) SetUpTest(c *C) {
 	os.Setenv("XDG_CONFIG_HOME", configHome)
 }
 
-func (s *BasePebbleSuite) TearDownTest(c *C) {
+func (s *BaseBuildtestSuite) TearDownTest(c *C) {
 	os.Setenv("BUILDTEST", "")
 	os.Setenv("BUILDTEST_SOCKET", "")
 
@@ -77,21 +77,21 @@ func (s *BasePebbleSuite) TearDownTest(c *C) {
 	s.BaseTest.TearDownTest(c)
 }
 
-func (s *BasePebbleSuite) Stdout() string {
+func (s *BaseBuildtestSuite) Stdout() string {
 	return s.stdout.String()
 }
 
-func (s *BasePebbleSuite) Stderr() string {
+func (s *BaseBuildtestSuite) Stderr() string {
 	return s.stderr.String()
 }
 
-func (s *BasePebbleSuite) ResetStdStreams() {
+func (s *BaseBuildtestSuite) ResetStdStreams() {
 	s.stdin.Reset()
 	s.stdout.Reset()
 	s.stderr.Reset()
 }
 
-func (s *BasePebbleSuite) RedirectClientToTestServer(handler func(http.ResponseWriter, *http.Request)) {
+func (s *BaseBuildtestSuite) RedirectClientToTestServer(handler func(http.ResponseWriter, *http.Request)) {
 	server := httptest.NewServer(http.HandlerFunc(handler))
 	s.BaseTest.AddCleanup(func() { server.Close() })
 	s.BaseTest.AddCleanup(cli.FakeClientConfigBaseURL(server.URL))
@@ -126,13 +126,13 @@ func fakeVersion(v string) (restore func()) {
 	return func() { cmd.Version = old }
 }
 
-type PebbleSuite struct {
-	BasePebbleSuite
+type BuildtestSuite struct {
+	BaseBuildtestSuite
 }
 
-var _ = Suite(&PebbleSuite{})
+var _ = Suite(&BuildtestSuite{})
 
-func (s *PebbleSuite) TestErrorResult(c *C) {
+func (s *BuildtestSuite) TestErrorResult(c *C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, `{"type": "error", "result": {"message": "cannot do something"}}`)
 	})
@@ -144,7 +144,7 @@ func (s *PebbleSuite) TestErrorResult(c *C) {
 	c.Assert(err, ErrorMatches, `cannot do something`)
 }
 
-func (s *PebbleSuite) TestRunOptionApplyDefaults(c *C) {
+func (s *BuildtestSuite) TestRunOptionApplyDefaults(c *C) {
 	os.Setenv("BUILDTEST", "")
 	os.Setenv("BUILDTEST_SOCKET", "")
 	os.Setenv("BUILDTEST_BASEURL", "")

@@ -24,7 +24,7 @@ import (
 	"github.com/holmanb/buildtest/internals/cli"
 )
 
-func (s *PebbleSuite) TestHealth(c *check.C) {
+func (s *BuildtestSuite) TestHealth(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		c.Assert(r.Method, check.Equals, "GET")
 		c.Assert(r.URL.Path, check.Equals, "/v1/health")
@@ -45,7 +45,7 @@ func (s *PebbleSuite) TestHealth(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestHealthLevel(c *check.C) {
+func (s *BuildtestSuite) TestHealthLevel(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		c.Assert(r.Method, check.Equals, "GET")
 		c.Assert(r.URL.Path, check.Equals, "/v1/health")
@@ -66,7 +66,7 @@ func (s *PebbleSuite) TestHealthLevel(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestHealthSpecificChecks(c *check.C) {
+func (s *BuildtestSuite) TestHealthSpecificChecks(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		c.Assert(r.Method, check.Equals, "GET")
 		c.Assert(r.URL.Path, check.Equals, "/v1/health")
@@ -90,7 +90,7 @@ func (s *PebbleSuite) TestHealthSpecificChecks(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestHealthBadLevel(c *check.C) {
+func (s *BuildtestSuite) TestHealthBadLevel(c *check.C) {
 	restore := fakeArgs("buildtest", "health", "--level", "foo")
 	defer restore()
 
@@ -100,7 +100,7 @@ func (s *PebbleSuite) TestHealthBadLevel(c *check.C) {
 	c.Check(s.Stderr(), check.Matches, "error: Invalid value .* Allowed values are: alive or ready\n")
 }
 
-func (s *PebbleSuite) TestHealthJSON(c *check.C) {
+func (s *BuildtestSuite) TestHealthJSON(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{
 			"type": "sync",
@@ -118,7 +118,7 @@ func (s *PebbleSuite) TestHealthJSON(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestHealthUnhealthyJSON(c *check.C) {
+func (s *BuildtestSuite) TestHealthUnhealthyJSON(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{
 			"type": "sync",
@@ -137,7 +137,7 @@ func (s *PebbleSuite) TestHealthUnhealthyJSON(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestHealthYAML(c *check.C) {
+func (s *BuildtestSuite) TestHealthYAML(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{
 			"type": "sync",
@@ -155,7 +155,7 @@ func (s *PebbleSuite) TestHealthYAML(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestHealthUnhealthyYAML(c *check.C) {
+func (s *BuildtestSuite) TestHealthUnhealthyYAML(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{
 			"type": "sync",
@@ -174,7 +174,7 @@ func (s *PebbleSuite) TestHealthUnhealthyYAML(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestHealthInvalidFormat(c *check.C) {
+func (s *BuildtestSuite) TestHealthInvalidFormat(c *check.C) {
 	restore := fakeArgs("buildtest", "health", "--format", "foobar")
 	defer restore()
 
@@ -184,7 +184,7 @@ func (s *PebbleSuite) TestHealthInvalidFormat(c *check.C) {
 	c.Check(s.Stderr(), check.Matches, "error: Invalid value .* Allowed values are: text, json or yaml\n")
 }
 
-func (s *PebbleSuite) TestHealthInvalidResponseYAML(c *check.C) {
+func (s *BuildtestSuite) TestHealthInvalidResponseYAML(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 		fmt.Fprintf(w, `bad`)
@@ -197,7 +197,7 @@ func (s *PebbleSuite) TestHealthInvalidResponseYAML(c *check.C) {
 	c.Check(exitCode, check.Equals, 1)
 }
 
-func (s *PebbleSuite) TestHealthInvalidResponseJSON(c *check.C) {
+func (s *BuildtestSuite) TestHealthInvalidResponseJSON(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 		fmt.Fprintf(w, `bad`)

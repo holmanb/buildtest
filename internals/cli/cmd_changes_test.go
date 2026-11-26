@@ -93,7 +93,7 @@ var fakeChangeInProgressJSON = `{"type": "sync", "result": {
   "tasks": [{"kind": "bar", "summary": "some summary", "status": "Doing", "progress": {"done": 50, "total": 100}, "spawn-time": "2016-04-21T01:02:03Z", "ready-time": "2016-04-21T01:02:04Z", "log": ["a", "b", "c"]}]
 }}`
 
-func (s *PebbleSuite) TestChangesExtraArgs(c *check.C) {
+func (s *BuildtestSuite) TestChangesExtraArgs(c *check.C) {
 	rest, err := cli.ParserForTest().ParseArgs([]string{"changes", "extra", "args"})
 	c.Assert(err, check.Equals, cli.ErrExtraArgs)
 	c.Check(rest, check.HasLen, 1)
@@ -101,7 +101,7 @@ func (s *PebbleSuite) TestChangesExtraArgs(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestChangesAbort(c *check.C) {
+func (s *BuildtestSuite) TestChangesAbort(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		c.Check(r.Method, check.Equals, "POST")
 		c.Check(r.URL.Path, check.Equals, "/v1/changes/42")
@@ -117,21 +117,21 @@ func (s *PebbleSuite) TestChangesAbort(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestChangesAbortNoID(c *check.C) {
+func (s *BuildtestSuite) TestChangesAbortNoID(c *check.C) {
 	_, err := cli.ParserForTest().ParseArgs([]string{"changes", "--abort"})
 	c.Assert(err, check.ErrorMatches, "please provide a change ID to abort")
 	c.Check(s.Stdout(), check.Equals, "")
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestChangesAbortInvalidID(c *check.C) {
+func (s *BuildtestSuite) TestChangesAbortInvalidID(c *check.C) {
 	_, err := cli.ParserForTest().ParseArgs([]string{"changes", "--abort", "abc"})
 	c.Assert(err, check.ErrorMatches, `invalid change ID "abc"`)
 	c.Check(s.Stdout(), check.Equals, "")
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestChangesAbortFails(c *check.C) {
+func (s *BuildtestSuite) TestChangesAbortFails(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		c.Check(r.Method, check.Equals, "POST")
 		c.Check(r.URL.Path, check.Equals, "/v1/changes/42")
@@ -144,7 +144,7 @@ func (s *PebbleSuite) TestChangesAbortFails(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestChangesAllDigitsSuggestion(c *check.C) {
+func (s *BuildtestSuite) TestChangesAllDigitsSuggestion(c *check.C) {
 	rest, err := cli.ParserForTest().ParseArgs([]string{"changes", "42"})
 	c.Assert(err, check.ErrorMatches, `'buildtest changes' command expects a service name, try 'buildtest tasks 42'`)
 	c.Check(rest, check.HasLen, 1)
@@ -152,7 +152,7 @@ func (s *PebbleSuite) TestChangesAllDigitsSuggestion(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestNoChanges(c *check.C) {
+func (s *BuildtestSuite) TestNoChanges(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		c.Check(r.Method, check.Equals, "GET")
 		c.Check(r.URL.Path, check.Equals, "/v1/changes")
@@ -167,7 +167,7 @@ func (s *PebbleSuite) TestNoChanges(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "no changes found\n")
 }
 
-func (s *PebbleSuite) TestGetChangesFails(c *check.C) {
+func (s *BuildtestSuite) TestGetChangesFails(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		c.Check(r.Method, check.Equals, "GET")
 		c.Check(r.URL.Path, check.Equals, "/v1/changes")
@@ -182,7 +182,7 @@ func (s *PebbleSuite) TestGetChangesFails(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestChanges(c *check.C) {
+func (s *BuildtestSuite) TestChanges(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		c.Check(r.Method, check.Equals, "GET")
 		c.Check(r.URL.Path, check.Equals, "/v1/changes")
@@ -207,7 +207,7 @@ two +Do +2016-04-21 +2016-04-2[12] +...
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestChangesJSON(c *check.C) {
+func (s *BuildtestSuite) TestChangesJSON(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		c.Check(r.Method, check.Equals, "GET")
 		c.Check(r.URL.Path, check.Equals, "/v1/changes")
@@ -222,7 +222,7 @@ func (s *PebbleSuite) TestChangesJSON(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestChangesYAML(c *check.C) {
+func (s *BuildtestSuite) TestChangesYAML(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		c.Check(r.Method, check.Equals, "GET")
 		c.Check(r.URL.Path, check.Equals, "/v1/changes")
@@ -310,7 +310,7 @@ changes:
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestNoChangesJSON(c *check.C) {
+func (s *BuildtestSuite) TestNoChangesJSON(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		c.Check(r.Method, check.Equals, "GET")
 		c.Check(r.URL.Path, check.Equals, "/v1/changes")
@@ -325,7 +325,7 @@ func (s *PebbleSuite) TestNoChangesJSON(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestNoChangesYAML(c *check.C) {
+func (s *BuildtestSuite) TestNoChangesYAML(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		c.Check(r.Method, check.Equals, "GET")
 		c.Check(r.URL.Path, check.Equals, "/v1/changes")
@@ -340,12 +340,12 @@ func (s *PebbleSuite) TestNoChangesYAML(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestChangesInvalidFormat(c *check.C) {
+func (s *BuildtestSuite) TestChangesInvalidFormat(c *check.C) {
 	_, err := cli.ParserForTest().ParseArgs([]string{"changes", "--format", "foobar"})
 	c.Assert(err, check.ErrorMatches, "Invalid value.*for option.*--format.*")
 }
 
-func (s *PebbleSuite) TestChangesUnknownMaintenance(c *check.C) {
+func (s *BuildtestSuite) TestChangesUnknownMaintenance(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		c.Check(r.Method, check.Equals, "GET")
 		c.Check(r.URL.Path, check.Equals, "/v1/changes")
@@ -361,7 +361,7 @@ func (s *PebbleSuite) TestChangesUnknownMaintenance(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestChangeSimple(c *check.C) {
+func (s *BuildtestSuite) TestChangeSimple(c *check.C) {
 	n := 0
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		if n < 2 {
@@ -384,7 +384,7 @@ Do +2016-04-21T01:02:03Z +- +some summary
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestChangeSimpleFails(c *check.C) {
+func (s *BuildtestSuite) TestChangeSimpleFails(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		c.Check(r.Method, check.Equals, "GET")
 		c.Check(r.URL.Path, check.Equals, "/v1/changes/42")
@@ -398,7 +398,7 @@ func (s *PebbleSuite) TestChangeSimpleFails(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestChangeSimpleRebooting(c *check.C) {
+func (s *BuildtestSuite) TestChangeSimpleRebooting(c *check.C) {
 	n := 0
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		if n < 2 {
@@ -417,7 +417,7 @@ func (s *PebbleSuite) TestChangeSimpleRebooting(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "WARNING: Buildtest is about to reboot the system\n")
 }
 
-func (s *PebbleSuite) TestChangeSimpleUnknownMaintenance(c *check.C) {
+func (s *BuildtestSuite) TestChangeSimpleUnknownMaintenance(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		c.Check(r.Method, check.Equals, "GET")
 		c.Check(r.URL.Path, check.Equals, "/v1/changes/42")
@@ -429,7 +429,7 @@ func (s *PebbleSuite) TestChangeSimpleUnknownMaintenance(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestTasksLast(c *check.C) {
+func (s *BuildtestSuite) TestTasksLast(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		c.Check(r.Method, check.Equals, "GET")
 		if r.URL.Path == "/v1/changes" {
@@ -453,7 +453,7 @@ Do +2016-04-21T01:02:03Z +- +some summary
 	c.Assert(err, check.ErrorMatches, `no changes of type "foobar" found`)
 }
 
-func (s *PebbleSuite) TestTasksLastQuestionmark(c *check.C) {
+func (s *BuildtestSuite) TestTasksLastQuestionmark(c *check.C) {
 	n := 0
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		n++
@@ -486,7 +486,7 @@ func (s *PebbleSuite) TestTasksLastQuestionmark(c *check.C) {
 	c.Check(n, check.Equals, 4)
 }
 
-func (s *PebbleSuite) TestTasksSyntaxError(c *check.C) {
+func (s *BuildtestSuite) TestTasksSyntaxError(c *check.C) {
 	_, err := cli.ParserForTest().ParseArgs([]string{"tasks", "--abs-time", "--last=install", "42"})
 	c.Assert(err, check.NotNil)
 	c.Assert(err, check.ErrorMatches, `cannot use change ID and type together`)
@@ -496,7 +496,7 @@ func (s *PebbleSuite) TestTasksSyntaxError(c *check.C) {
 	c.Assert(err, check.ErrorMatches, `please provide change ID or type with --last=<type>`)
 }
 
-func (s *PebbleSuite) TestTasksJSON(c *check.C) {
+func (s *BuildtestSuite) TestTasksJSON(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		c.Check(r.Method, check.Equals, "GET")
 		c.Check(r.URL.Path, check.Equals, "/v1/changes/42")
@@ -510,7 +510,7 @@ func (s *PebbleSuite) TestTasksJSON(c *check.C) {
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestTasksYAML(c *check.C) {
+func (s *BuildtestSuite) TestTasksYAML(c *check.C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		c.Check(r.Method, check.Equals, "GET")
 		c.Check(r.URL.Path, check.Equals, "/v1/changes/42")
@@ -541,12 +541,12 @@ spawn-time: 2016-04-21T01:02:03Z
 	c.Check(s.Stderr(), check.Equals, "")
 }
 
-func (s *PebbleSuite) TestTasksInvalidFormat(c *check.C) {
+func (s *BuildtestSuite) TestTasksInvalidFormat(c *check.C) {
 	_, err := cli.ParserForTest().ParseArgs([]string{"tasks", "--format", "foobar", "42"})
 	c.Assert(err, check.ErrorMatches, "Invalid value.*for option.*--format.*")
 }
 
-func (s *PebbleSuite) TestChangeProgress(c *check.C) {
+func (s *BuildtestSuite) TestChangeProgress(c *check.C) {
 	n := 0
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		switch n {

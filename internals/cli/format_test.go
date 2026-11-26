@@ -47,7 +47,7 @@ func setEnviron(env map[string]string) func() {
 	}
 }
 
-func (s *PebbleSuite) TestCanUnicode(c *check.C) {
+func (s *BuildtestSuite) TestCanUnicode(c *check.C) {
 	// setenv is per thread
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -83,7 +83,7 @@ func (s *PebbleSuite) TestCanUnicode(c *check.C) {
 	}
 }
 
-func (s *PebbleSuite) TestColorTable(c *check.C) {
+func (s *BuildtestSuite) TestColorTable(c *check.C) {
 	// setenv is per thread
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()

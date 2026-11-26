@@ -172,10 +172,10 @@ ok      github.com/holmanb/buildtest/internals/cli  0.115s
 To run a single suite or a single test, pass the suite or test name to the [gocheck](https://labix.org/gocheck) test runner:
 
 ```
-$ go test ./internals/cli -v -check.v -check.f PebbleSuite
+$ go test ./internals/cli -v -check.v -check.f BuildtestSuite
 === RUN   Test
-PASS: cmd_changes_test.go:38: PebbleSuite.TestChanges   0.002s
-PASS: format_test.go:52: PebbleSuite.TestCanUnicode 0.000s
+PASS: cmd_changes_test.go:38: BuildtestSuite.TestChanges   0.002s
+PASS: format_test.go:52: BuildtestSuite.TestCanUnicode 0.000s
 ...
 OK: 20 passed
 --- PASS: Test (0.02s)

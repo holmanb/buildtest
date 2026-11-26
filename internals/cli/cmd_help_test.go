@@ -20,7 +20,7 @@ import (
 	"github.com/holmanb/buildtest/internals/cli"
 )
 
-func (s *PebbleSuite) TestHelpCommand(c *C) {
+func (s *BuildtestSuite) TestHelpCommand(c *C) {
 	restore := fakeArgs("buildtest", "help")
 	defer restore()
 
@@ -30,7 +30,7 @@ func (s *PebbleSuite) TestHelpCommand(c *C) {
 	c.Check(s.Stderr(), Equals, "")
 }
 
-func (s *PebbleSuite) TestHelpAll(c *C) {
+func (s *BuildtestSuite) TestHelpAll(c *C) {
 	restore := fakeArgs("buildtest", "help", "--all")
 	defer restore()
 
@@ -40,7 +40,7 @@ func (s *PebbleSuite) TestHelpAll(c *C) {
 	c.Check(s.Stderr(), Equals, "")
 }
 
-func (s *PebbleSuite) TestHelpAllWithCommand(c *C) {
+func (s *BuildtestSuite) TestHelpAllWithCommand(c *C) {
 	restore := fakeArgs("buildtest", "help", "help", "--all")
 	defer restore()
 
@@ -50,7 +50,7 @@ func (s *PebbleSuite) TestHelpAllWithCommand(c *C) {
 	c.Check(s.Stderr(), Equals, "")
 }
 
-func (s *PebbleSuite) TestHelpMan(c *C) {
+func (s *BuildtestSuite) TestHelpMan(c *C) {
 	restore := fakeArgs("buildtest", "help", "--man")
 	defer restore()
 
@@ -60,7 +60,7 @@ func (s *PebbleSuite) TestHelpMan(c *C) {
 	c.Check(s.Stderr(), Equals, "")
 }
 
-func (s *PebbleSuite) TestHelpOption(c *C) {
+func (s *BuildtestSuite) TestHelpOption(c *C) {
 	restore := fakeArgs("buildtest", "--help")
 	defer restore()
 
@@ -70,7 +70,7 @@ func (s *PebbleSuite) TestHelpOption(c *C) {
 	c.Check(s.Stderr(), Equals, "")
 }
 
-func (s *PebbleSuite) TestHelpWithCommand(c *C) {
+func (s *BuildtestSuite) TestHelpWithCommand(c *C) {
 	restore := fakeArgs("buildtest", "help", "help")
 	defer restore()
 
@@ -80,7 +80,7 @@ func (s *PebbleSuite) TestHelpWithCommand(c *C) {
 	c.Check(s.Stderr(), Equals, "")
 }
 
-func (s *PebbleSuite) TestHelpWithUnknownCommand(c *C) {
+func (s *BuildtestSuite) TestHelpWithUnknownCommand(c *C) {
 	restore := fakeArgs("buildtest", "help", "dachshund")
 	defer restore()
 
@@ -90,7 +90,7 @@ func (s *PebbleSuite) TestHelpWithUnknownCommand(c *C) {
 	c.Check(s.Stderr(), Equals, "")
 }
 
-func (s *PebbleSuite) TestHelpWithUnknownSubcommand(c *C) {
+func (s *BuildtestSuite) TestHelpWithUnknownSubcommand(c *C) {
 	restore := fakeArgs("buildtest", "help", "changes", "dachshund")
 	defer restore()
 
@@ -100,7 +100,7 @@ func (s *PebbleSuite) TestHelpWithUnknownSubcommand(c *C) {
 	c.Check(s.Stderr(), Equals, "")
 }
 
-func (s *PebbleSuite) TestCommandWithHelpOption(c *C) {
+func (s *BuildtestSuite) TestCommandWithHelpOption(c *C) {
 	restore := fakeArgs("buildtest", "help", "--help")
 	defer restore()
 
@@ -110,7 +110,7 @@ func (s *PebbleSuite) TestCommandWithHelpOption(c *C) {
 	c.Check(s.Stderr(), Equals, "")
 }
 
-func (s *PebbleSuite) TestAddHelpCategory(c *C) {
+func (s *BuildtestSuite) TestAddHelpCategory(c *C) {
 	restore := fakeArgs("buildtest")
 	defer restore()
 

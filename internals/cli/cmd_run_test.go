@@ -24,7 +24,7 @@ import (
 	"github.com/holmanb/buildtest/internals/cli"
 )
 
-func (s *PebbleSuite) TestMaybeCopyPebbleDir(c *C) {
+func (s *BuildtestSuite) TestMaybeCopyPebbleDir(c *C) {
 	src := c.MkDir()
 	err := os.MkdirAll(path.Join(src, "a", "b", "c"), 0700)
 	c.Assert(err, IsNil)
@@ -66,7 +66,7 @@ func (s *PebbleSuite) TestMaybeCopyPebbleDir(c *C) {
 	})
 }
 
-func (s *PebbleSuite) TestMaybeCopyPebbleDirNoCopy(c *C) {
+func (s *BuildtestSuite) TestMaybeCopyPebbleDirNoCopy(c *C) {
 	src := c.MkDir()
 	err := os.MkdirAll(path.Join(src, "a", "b", "c"), 0700)
 	c.Assert(err, IsNil)
@@ -104,7 +104,7 @@ func (s *PebbleSuite) TestMaybeCopyPebbleDirNoCopy(c *C) {
 	})
 }
 
-func (s *PebbleSuite) TestMaybeCopyPebbleDirSourceNotExist(c *C) {
+func (s *BuildtestSuite) TestMaybeCopyPebbleDirSourceNotExist(c *C) {
 	tmpDir := c.MkDir()
 	dst := path.Join(tmpDir, "dst")
 	err := os.Mkdir(dst, 0o700)
@@ -114,7 +114,7 @@ func (s *PebbleSuite) TestMaybeCopyPebbleDirSourceNotExist(c *C) {
 	c.Assert(err, IsNil)
 }
 
-func (s *PebbleSuite) TestMaybeCopyPebbleDirSourceNotADirectory(c *C) {
+func (s *BuildtestSuite) TestMaybeCopyPebbleDirSourceNotADirectory(c *C) {
 	tmpDir := c.MkDir()
 	dst := path.Join(tmpDir, "dst")
 	err := os.Mkdir(dst, 0o700)
@@ -126,7 +126,7 @@ func (s *PebbleSuite) TestMaybeCopyPebbleDirSourceNotADirectory(c *C) {
 	c.Assert(err, ErrorMatches, ".*not a directory.*")
 }
 
-func (s *PebbleSuite) TestHTTPAddressEnvVar(c *C) {
+func (s *BuildtestSuite) TestHTTPAddressEnvVar(c *C) {
 	os.Setenv("BUILDTEST_HTTP", "")
 
 	// No flag, no env var: empty.

@@ -25,19 +25,19 @@ import (
 	"github.com/holmanb/buildtest/internals/cli"
 )
 
-func (s *PebbleSuite) TestBuildTestExtraArgs(c *C) {
+func (s *BuildtestSuite) TestBuildTestExtraArgs(c *C) {
 	rest, err := cli.ParserForTest().ParseArgs([]string{"build-test", "/some/path", "extra"})
 	c.Assert(err, Equals, cli.ErrExtraArgs)
 	c.Check(rest, HasLen, 1)
 }
 
-func (s *PebbleSuite) TestBuildTestMissingPath(c *C) {
+func (s *BuildtestSuite) TestBuildTestMissingPath(c *C) {
 	_, err := cli.ParserForTest().ParseArgs([]string{"build-test"})
 	c.Assert(err, NotNil)
 	c.Check(err, ErrorMatches, `.*required argument.*`)
 }
 
-func (s *PebbleSuite) TestBuildTestDebugFlag(c *C) {
+func (s *BuildtestSuite) TestBuildTestDebugFlag(c *C) {
 	// Test that the --debug flag is recognized by the parser.
 	// We verify this by parsing with --debug and a valid source path,
 	// but with extra args to avoid actual execution.
@@ -46,7 +46,7 @@ func (s *PebbleSuite) TestBuildTestDebugFlag(c *C) {
 	c.Assert(err, Equals, cli.ErrExtraArgs)
 }
 
-func (s *PebbleSuite) TestBuildTestSuccess(c *C) {
+func (s *BuildtestSuite) TestBuildTestSuccess(c *C) {
 	srcDir := c.MkDir()
 	err := os.WriteFile(filepath.Join(srcDir, "hello.txt"), []byte("hello"), 0o644)
 	c.Assert(err, IsNil)
@@ -111,7 +111,7 @@ func (s *PebbleSuite) TestBuildTestSuccess(c *C) {
 	c.Check(output, Matches, `(?s)BUILD.*Exit code: 0.*build output.*RUN.*Exit code: 0.*test output.*test stderr.*`)
 }
 
-func (s *PebbleSuite) TestBuildTestBuildFailure(c *C) {
+func (s *BuildtestSuite) TestBuildTestBuildFailure(c *C) {
 	srcDir := c.MkDir()
 	err := os.WriteFile(filepath.Join(srcDir, "hello.txt"), []byte("hello"), 0o644)
 	c.Assert(err, IsNil)
@@ -160,7 +160,7 @@ func (s *PebbleSuite) TestBuildTestBuildFailure(c *C) {
 	c.Check(output, Not(Matches), `(?s)RUN.*`)
 }
 
-func (s *PebbleSuite) TestBuildTestNonexistentPath(c *C) {
+func (s *BuildtestSuite) TestBuildTestNonexistentPath(c *C) {
 	restore := fakeArgs("buildtest", "build-test", "/nonexistent/path")
 	defer restore()
 

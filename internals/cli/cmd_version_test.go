@@ -23,7 +23,7 @@ import (
 	"github.com/holmanb/buildtest/internals/cli"
 )
 
-func (s *PebbleSuite) TestVersion(c *C) {
+func (s *BuildtestSuite) TestVersion(c *C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, `{"type":"sync","status-code":200,"status":"OK","result":{"version":"7.89"}}`)
 	})
@@ -37,7 +37,7 @@ func (s *PebbleSuite) TestVersion(c *C) {
 	c.Check(s.Stderr(), Equals, "")
 }
 
-func (s *PebbleSuite) TestVersionClientOnly(c *C) {
+func (s *BuildtestSuite) TestVersionClientOnly(c *C) {
 	restore := fakeVersion("v1.2.3")
 	defer restore()
 
@@ -47,7 +47,7 @@ func (s *PebbleSuite) TestVersionClientOnly(c *C) {
 	c.Check(s.Stderr(), Equals, "")
 }
 
-func (s *PebbleSuite) TestVersionJSON(c *C) {
+func (s *BuildtestSuite) TestVersionJSON(c *C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, `{"type":"sync","status-code":200,"status":"OK","result":{"version":"7.89"}}`)
 	})
@@ -61,7 +61,7 @@ func (s *PebbleSuite) TestVersionJSON(c *C) {
 	c.Check(s.Stderr(), Equals, "")
 }
 
-func (s *PebbleSuite) TestVersionYAML(c *C) {
+func (s *BuildtestSuite) TestVersionYAML(c *C) {
 	s.RedirectClientToTestServer(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, `{"type":"sync","status-code":200,"status":"OK","result":{"version":"7.89"}}`)
 	})
@@ -75,7 +75,7 @@ func (s *PebbleSuite) TestVersionYAML(c *C) {
 	c.Check(s.Stderr(), Equals, "")
 }
 
-func (s *PebbleSuite) TestVersionClientOnlyJSON(c *C) {
+func (s *BuildtestSuite) TestVersionClientOnlyJSON(c *C) {
 	restore := fakeVersion("v1.2.3")
 	defer restore()
 
@@ -85,7 +85,7 @@ func (s *PebbleSuite) TestVersionClientOnlyJSON(c *C) {
 	c.Check(s.Stderr(), Equals, "")
 }
 
-func (s *PebbleSuite) TestVersionClientOnlyYAML(c *C) {
+func (s *BuildtestSuite) TestVersionClientOnlyYAML(c *C) {
 	restore := fakeVersion("v1.2.3")
 	defer restore()
 
@@ -95,12 +95,12 @@ func (s *PebbleSuite) TestVersionClientOnlyYAML(c *C) {
 	c.Check(s.Stderr(), Equals, "")
 }
 
-func (s *PebbleSuite) TestVersionInvalidFormat(c *C) {
+func (s *BuildtestSuite) TestVersionInvalidFormat(c *C) {
 	_, err := cli.ParserForTest().ParseArgs([]string{"version", "--format", "foobar"})
 	c.Assert(err, ErrorMatches, "Invalid value.*for option.*--format.*")
 }
 
-func (s *PebbleSuite) TestVersionExtraArgs(c *C) {
+func (s *BuildtestSuite) TestVersionExtraArgs(c *C) {
 	rest, err := cli.ParserForTest().ParseArgs([]string{"version", "extra", "args"})
 	c.Assert(err, Equals, cli.ErrExtraArgs)
 	c.Assert(rest, HasLen, 1)
