@@ -60,7 +60,7 @@ func init() {
 		Name:        "changes",
 		Summary:     cmdChangesSummary,
 		Description: cmdChangesDescription,
-		ArgsHelp:    merge(timeArgsHelp, formatArgsHelp, map[string]string{
+		ArgsHelp: merge(timeArgsHelp, formatArgsHelp, map[string]string{
 			"--abort": "Abort the change with the given ID",
 		}),
 		New: func(opts *CmdOptions) flags.Commander {

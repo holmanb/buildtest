@@ -54,13 +54,13 @@ func Test(t *testing.T) {
 }
 
 type daemonSuite struct {
-	pebbleDir    string
-	socketPath   string
-	httpAddress  string
-	statePath    string
-	authorized   bool
-	err          error
-	notified     []string
+	pebbleDir   string
+	socketPath  string
+	httpAddress string
+	statePath   string
+	authorized  bool
+	err         error
+	notified    []string
 }
 
 var _ = Suite(&daemonSuite{})

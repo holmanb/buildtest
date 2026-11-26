@@ -77,7 +77,6 @@ func (s *BasePebbleSuite) TearDownTest(c *C) {
 	cli.Stderr = os.Stderr
 	cli.ReadPassword = term.ReadPassword
 
-
 	s.BaseTest.TearDownTest(c)
 }
 

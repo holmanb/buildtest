@@ -53,7 +53,7 @@ var API = []*Command{{
 }, {
 	Path:        "/v1/build-test",
 	WriteAccess: OpenAccess{},
-	ReadAccess: OpenAccess{},
+	ReadAccess:  OpenAccess{},
 	POST:        v1PostBuildTest,
 }}
 
