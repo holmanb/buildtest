@@ -38,8 +38,8 @@ var _ = Suite(&handlersSuite{})
 func (s *handlersSuite) SetUpTest(c *C) {
 	s.st = state.New(nil)
 	runner := state.NewTaskRunner(s.st)
-	pebbleDir := c.MkDir()
-	s.mgr = buildteststate.NewManager(pebbleDir, runner)
+	buildTestDir := c.MkDir()
+	s.mgr = buildteststate.NewManager(buildTestDir, runner)
 }
 
 func (s *handlersSuite) TearDownTest(c *C) {
@@ -85,8 +85,8 @@ func (s *handlersSuite) TestDoBuildSuccess(c *C) {
 	})
 	defer restore()
 
-	pebbleDir := c.MkDir()
-	tarballPath := createMinimalTarball(c, pebbleDir)
+	buildTestDir := c.MkDir()
+	tarballPath := createMinimalTarball(c, buildTestDir)
 
 	buildTask, _ := s.createBuildTestChange(c, &buildteststate.BuildTestArgs{
 		SourceTarball: tarballPath,
@@ -119,8 +119,8 @@ func (s *handlersSuite) TestDoBuildFailure(c *C) {
 	})
 	defer cleanRestore()
 
-	pebbleDir := c.MkDir()
-	tarballPath := createMinimalTarball(c, pebbleDir)
+	buildTestDir := c.MkDir()
+	tarballPath := createMinimalTarball(c, buildTestDir)
 
 	buildTask, _ := s.createBuildTestChange(c, &buildteststate.BuildTestArgs{
 		SourceTarball: tarballPath,
@@ -151,8 +151,8 @@ func (s *handlersSuite) TestDoBuildTimeout(c *C) {
 	})
 	defer restore()
 
-	pebbleDir := c.MkDir()
-	tarballPath := createMinimalTarball(c, pebbleDir)
+	buildTestDir := c.MkDir()
+	tarballPath := createMinimalTarball(c, buildTestDir)
 
 	buildTask, _ := s.createBuildTestChange(c, &buildteststate.BuildTestArgs{
 		SourceTarball: tarballPath,
@@ -173,8 +173,8 @@ func (s *handlersSuite) TestDoRunSuccess(c *C) {
 	})
 	defer restore()
 
-	pebbleDir := c.MkDir()
-	tarballPath := createMinimalTarball(c, pebbleDir)
+	buildTestDir := c.MkDir()
+	tarballPath := createMinimalTarball(c, buildTestDir)
 
 	buildTask, runTask := s.createBuildTestChange(c, &buildteststate.BuildTestArgs{
 		SourceTarball: tarballPath,
@@ -213,8 +213,8 @@ func (s *handlersSuite) TestDoRunFailure(c *C) {
 	})
 	defer restore()
 
-	pebbleDir := c.MkDir()
-	tarballPath := createMinimalTarball(c, pebbleDir)
+	buildTestDir := c.MkDir()
+	tarballPath := createMinimalTarball(c, buildTestDir)
 
 	buildTask, runTask := s.createBuildTestChange(c, &buildteststate.BuildTestArgs{
 		SourceTarball: tarballPath,
@@ -260,8 +260,8 @@ func (s *handlersSuite) TestDoBuildRetrySuccess(c *C) {
 	})
 	defer cleanRestore()
 
-	pebbleDir := c.MkDir()
-	tarballPath := createMinimalTarball(c, pebbleDir)
+	buildTestDir := c.MkDir()
+	tarballPath := createMinimalTarball(c, buildTestDir)
 
 	buildTask, _ := s.createBuildTestChange(c, &buildteststate.BuildTestArgs{
 		SourceTarball: tarballPath,
@@ -301,8 +301,8 @@ func (s *handlersSuite) TestDoBuildRetryExhausted(c *C) {
 	})
 	defer cleanRestore()
 
-	pebbleDir := c.MkDir()
-	tarballPath := createMinimalTarball(c, pebbleDir)
+	buildTestDir := c.MkDir()
+	tarballPath := createMinimalTarball(c, buildTestDir)
 
 	buildTask, _ := s.createBuildTestChange(c, &buildteststate.BuildTestArgs{
 		SourceTarball: tarballPath,
@@ -341,8 +341,8 @@ func (s *handlersSuite) TestDoBuildCleanCommandFailure(c *C) {
 	})
 	defer cleanRestore()
 
-	pebbleDir := c.MkDir()
-	tarballPath := createMinimalTarball(c, pebbleDir)
+	buildTestDir := c.MkDir()
+	tarballPath := createMinimalTarball(c, buildTestDir)
 
 	buildTask, _ := s.createBuildTestChange(c, &buildteststate.BuildTestArgs{
 		SourceTarball: tarballPath,
@@ -369,8 +369,8 @@ func (s *handlersSuite) TestDoBuildNoRetryOnRunCommandError(c *C) {
 	})
 	defer restore()
 
-	pebbleDir := c.MkDir()
-	tarballPath := createMinimalTarball(c, pebbleDir)
+	buildTestDir := c.MkDir()
+	tarballPath := createMinimalTarball(c, buildTestDir)
 
 	buildTask, _ := s.createBuildTestChange(c, &buildteststate.BuildTestArgs{
 		SourceTarball: tarballPath,
@@ -399,8 +399,8 @@ func (s *handlersSuite) TestDoBuildInteractiveUsesStdioWebsockets(c *C) {
 	})
 	defer restore()
 
-	pebbleDir := c.MkDir()
-	tarballPath := createMinimalTarball(c, pebbleDir)
+	buildTestDir := c.MkDir()
+	tarballPath := createMinimalTarball(c, buildTestDir)
 
 	// Create a build-test with interactive mode enabled.
 	// Note: We can't actually run the handler in interactive mode
@@ -433,8 +433,8 @@ func (s *handlersSuite) TestDoRunInteractiveUsesStdioWebsockets(c *C) {
 	})
 	defer restore()
 
-	pebbleDir := c.MkDir()
-	tarballPath := createMinimalTarball(c, pebbleDir)
+	buildTestDir := c.MkDir()
+	tarballPath := createMinimalTarball(c, buildTestDir)
 
 	// Create a build-test with interactive mode enabled but no terminal.
 	buildTask, _ := s.createBuildTestChange(c, &buildteststate.BuildTestArgs{

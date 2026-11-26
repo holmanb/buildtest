@@ -28,38 +28,38 @@ import (
 
 // TestStartup tests that the daemon starts up and logs readiness.
 func TestStartup(t *testing.T) {
-	pebbleDir := t.TempDir()
+	buildTestDir := t.TempDir()
 
-	_, stderrCh := pebbleDaemon(t, pebbleDir, "run")
+	_, stderrCh := buildtestDaemon(t, buildTestDir, "run")
 	waitForLog(t, stderrCh, "buildtest", fmt.Sprintf(`"event":"sys_startup:%d","description":"Starting daemon"`, os.Getuid()), 3*time.Second)
 	waitForLog(t, stderrCh, "buildtest", "Started daemon", 3*time.Second)
 }
 
-// TestCreateDirs tests that the daemon creates the Pebble directory on
+// TestCreateDirs tests that the daemon creates the buildtest directory on
 // startup with the `--create-dirs` option.
 func TestCreateDirs(t *testing.T) {
 	tmpDir := t.TempDir()
-	pebbleDir := filepath.Join(tmpDir, "buildtest")
+	buildTestDir := filepath.Join(tmpDir, "buildtest")
 
-	_, stderrCh := pebbleDaemon(t, pebbleDir, "run", "--create-dirs")
+	_, stderrCh := buildtestDaemon(t, buildTestDir, "run", "--create-dirs")
 	waitForLog(t, stderrCh, "buildtest", "Started daemon", 3*time.Second)
 
-	st, err := os.Stat(pebbleDir)
+	st, err := os.Stat(buildTestDir)
 	if err != nil {
-		t.Fatalf("pebble run --create-dirs didn't create Pebble directory: %v", err)
+		t.Fatalf("buildtest run --create-dirs didn't create buildtest directory: %v", err)
 	}
 	if !st.IsDir() {
-		t.Fatalf("pebble dir %s is not a directory: %v", pebbleDir, err)
+		t.Fatalf("buildtest dir %s is not a directory: %v", buildTestDir, err)
 	}
 }
 
 // TestHTTPPort tests that the daemon starts the HTTP API on the given port
 // with the `--http` option, and that /v1/health responds.
 func TestHTTPPort(t *testing.T) {
-	pebbleDir := t.TempDir()
+	buildTestDir := t.TempDir()
 
 	port := "61382"
-	_, stderrCh := pebbleDaemon(t, pebbleDir, "run", "--http=:"+port)
+	_, stderrCh := buildtestDaemon(t, buildTestDir, "run", "--http=:"+port)
 	waitForLog(t, stderrCh, "buildtest", "Started daemon", 3*time.Second)
 
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%s/v1/health", port))
@@ -68,21 +68,21 @@ func TestHTTPPort(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		t.Fatalf("error checking pebble /v1/health on port %s: %v", port, err)
+		t.Fatalf("error checking buildtest /v1/health on port %s: %v", port, err)
 	}
 }
 
 // TestPersistDefault tests that the daemon persists the state to the disk
 // by default without setting the environment variable `BUILDTEST_PERSIST`.
 func TestPersistDefault(t *testing.T) {
-	pebbleDir := t.TempDir()
+	buildTestDir := t.TempDir()
 
-	_, stderrCh := pebbleDaemon(t, pebbleDir, "run")
+	_, stderrCh := buildtestDaemon(t, buildTestDir, "run")
 	waitForLog(t, stderrCh, "buildtest", "Started daemon", 3*time.Second)
 
-	_, err := os.Stat(filepath.Join(pebbleDir, ".buildtest.state"))
+	_, err := os.Stat(filepath.Join(buildTestDir, ".buildtest.state"))
 	if err != nil {
-		t.Fatalf("pebble run without setting BUILDTEST_PERSIST didn't create the state file: %v", err)
+		t.Fatalf("Buildtest run without setting BUILDTEST_PERSIST didn't create the state file: %v", err)
 	}
 }
 
@@ -90,31 +90,31 @@ func TestPersistDefault(t *testing.T) {
 // is set to "never", the daemon does not persist its state to the disk.
 func TestPersistNever(t *testing.T) {
 	t.Setenv("BUILDTEST_PERSIST", "never")
-	pebbleDir := t.TempDir()
+	buildTestDir := t.TempDir()
 
-	_, stderrCh := pebbleDaemon(t, pebbleDir, "run")
+	_, stderrCh := buildtestDaemon(t, buildTestDir, "run")
 	waitForLog(t, stderrCh, "buildtest", "Started daemon", 3*time.Second)
 
-	_, err := os.Stat(filepath.Join(pebbleDir, ".buildtest.state"))
+	_, err := os.Stat(filepath.Join(buildTestDir, ".buildtest.state"))
 	if err == nil {
-		t.Fatalf("pebble run with BUILDTEST_PERSIST set to 'never' still created the state file")
+		t.Fatalf("buildtest run with BUILDTEST_PERSIST set to 'never' still created the state file")
 	}
 	if !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("pebble run with BUILDTEST_PERSIST set to 'never' got error other than ErrNotExist: %v", err)
+		t.Fatalf("buildtest run with BUILDTEST_PERSIST set to 'never' got error other than ErrNotExist: %v", err)
 	}
 }
 
 // TestChangesOverHTTP tests that the changes command works against a running
 // daemon over the HTTP API.
 func TestChangesOverHTTP(t *testing.T) {
-	pebbleDir := t.TempDir()
+	buildTestDir := t.TempDir()
 
 	port := "61383"
-	_, stderrCh := pebbleDaemon(t, pebbleDir, "run", "--http=:"+port)
+	_, stderrCh := buildtestDaemon(t, buildTestDir, "run", "--http=:"+port)
 	waitForLog(t, stderrCh, "buildtest", "Started daemon", 3*time.Second)
 
 	t.Setenv("BUILDTEST_BASEURL", fmt.Sprintf("http://localhost:%s", port))
-	output := runPebbleCommand(t, pebbleDir, "changes")
+	output := runBuildtestCommand(t, buildTestDir, "changes")
 	if output == "" {
 		t.Fatal("changes command returned no output")
 	}

@@ -52,7 +52,7 @@ var ErrExtraArgs = fmt.Errorf("too many arguments for command")
 type CmdOptions struct {
 	Client     *client.Client
 	Parser     *flags.Parser
-	PebbleDir  string
+	BuildTestDir  string
 	SocketPath string
 }
 
@@ -148,7 +148,7 @@ type defaultOptions struct {
 
 type ParserOptions struct {
 	Client     *client.Client
-	PebbleDir  string
+	BuildTestDir  string
 	SocketPath string
 }
 
@@ -179,7 +179,7 @@ func Parser(opts *ParserOptions) *flags.Parser {
 		obj := c.New(&CmdOptions{
 			Client:     opts.Client,
 			Parser:     parser,
-			PebbleDir:  opts.PebbleDir,
+			BuildTestDir:  opts.BuildTestDir,
 			SocketPath: opts.SocketPath,
 		})
 
@@ -263,7 +263,7 @@ type RunOptions struct {
 	// is also used as the Unix domain socket path for the listening socket
 	ClientConfig *client.Config
 	Logger       logger.Logger
-	PebbleDir    string
+	BuildTestDir    string
 }
 
 // withDefaultRunOptions creates a copy of the supplied RunOptions and then
@@ -280,10 +280,10 @@ func withDefaultRunOptions(opts *RunOptions) *RunOptions {
 		}
 	}
 
-	if localOpts.PebbleDir == "" {
-		localOpts.PebbleDir = os.Getenv("BUILDTEST")
-		if localOpts.PebbleDir == "" {
-			localOpts.PebbleDir = cmd.DefaultDir
+	if localOpts.BuildTestDir == "" {
+		localOpts.BuildTestDir = os.Getenv("BUILDTEST")
+		if localOpts.BuildTestDir == "" {
+			localOpts.BuildTestDir = cmd.DefaultDir
 		}
 	}
 	if localOpts.Logger == nil {
@@ -295,7 +295,7 @@ func withDefaultRunOptions(opts *RunOptions) *RunOptions {
 	if localOpts.ClientConfig.Socket == "" {
 		localOpts.ClientConfig.Socket = os.Getenv("BUILDTEST_SOCKET")
 		if localOpts.ClientConfig.Socket == "" {
-			localOpts.ClientConfig.Socket = filepath.Join(localOpts.PebbleDir, ".buildtest.socket")
+			localOpts.ClientConfig.Socket = filepath.Join(localOpts.BuildTestDir, ".buildtest.socket")
 		}
 	}
 	if localOpts.ClientConfig.BaseURL == "" {
@@ -325,7 +325,7 @@ func Run(options *RunOptions) error {
 	}
 	parser := Parser(&ParserOptions{
 		Client:     cli,
-		PebbleDir:  localOptions.PebbleDir,
+		BuildTestDir:  localOptions.BuildTestDir,
 		SocketPath: localOptions.ClientConfig.Socket,
 	})
 	xtra, err := parser.Parse()

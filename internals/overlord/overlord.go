@@ -69,8 +69,8 @@ type Extension interface {
 
 // Options is the arguments passed to construct an Overlord.
 type Options struct {
-	// PebbleDir is the path to the buildtest directory. It must be provided.
-	PebbleDir string
+	// BuildTestDir is the path to the buildtest directory. It must be provided.
+	BuildTestDir string
 	// RestartHandler is an optional structure to handle restart requests.
 	RestartHandler restart.Handler
 	// ServiceOutput is an optional output for the logging manager.
@@ -91,7 +91,7 @@ const (
 // Overlord is the central manager of the system, keeping track
 // of all available state managers and related helpers.
 type Overlord struct {
-	pebbleDir string
+	buildTestDir string
 	stateEng  *StateEngine
 
 	// ensure loop
@@ -119,20 +119,20 @@ type Overlord struct {
 func New(opts *Options) (*Overlord, error) {
 
 	o := &Overlord{
-		pebbleDir:   opts.PebbleDir,
+		buildTestDir:   opts.BuildTestDir,
 		inited:      true,
 		extension:   opts.Extension,
 		loopProceed: make(chan struct{}),
 	}
 
-	if !filepath.IsAbs(o.pebbleDir) {
-		return nil, fmt.Errorf("directory %q must be absolute", o.pebbleDir)
+	if !filepath.IsAbs(o.buildTestDir) {
+		return nil, fmt.Errorf("directory %q must be absolute", o.buildTestDir)
 	}
-	if !osutil.IsDirectory(o.pebbleDir) {
-		return nil, fmt.Errorf("directory %q does not exist", o.pebbleDir)
+	if !osutil.IsDirectory(o.buildTestDir) {
+		return nil, fmt.Errorf("directory %q does not exist", o.buildTestDir)
 	}
-	if !osutil.IsWritable(o.pebbleDir) {
-		return nil, fmt.Errorf("directory %q not writable", o.pebbleDir)
+	if !osutil.IsWritable(o.buildTestDir) {
+		return nil, fmt.Errorf("directory %q not writable", o.buildTestDir)
 	}
 
 	curBootID, err := getCurrentBootID()
@@ -143,7 +143,7 @@ func New(opts *Options) (*Overlord, error) {
 	var s *state.State
 	var restartMgr *restart.RestartManager
 	if opts.Persist == PersistDefault {
-		statePath := filepath.Join(o.pebbleDir, cmd.StateFile)
+		statePath := filepath.Join(o.buildTestDir, cmd.StateFile)
 		backend := &overlordStateBackend{
 			path:         statePath,
 			ensureBefore: o.ensureBefore,
@@ -175,7 +175,7 @@ func New(opts *Options) (*Overlord, error) {
 	o.restartMgr = restartMgr
 	o.stateEng.AddManager(restartMgr)
 
-	o.buildTestMgr = buildteststate.NewManager(o.pebbleDir, o.runner)
+	o.buildTestMgr = buildteststate.NewManager(o.buildTestDir, o.runner)
 	o.stateEng.AddManager(o.buildTestMgr)
 
 	if o.extension != nil {

@@ -29,7 +29,7 @@ type BaseBuildtestSuite struct {
 	stdout    *bytes.Buffer
 	stderr    *bytes.Buffer
 	password  string
-	pebbleDir string
+	buildTestDir string
 
 	AuthFile string
 }
@@ -41,8 +41,8 @@ func (s *BaseBuildtestSuite) readPassword(fd int) ([]byte, error) {
 func (s *BaseBuildtestSuite) SetUpTest(c *C) {
 	s.BaseTest.SetUpTest(c)
 
-	s.pebbleDir = c.MkDir()
-	os.Setenv("BUILDTEST", s.pebbleDir)
+	s.buildTestDir = c.MkDir()
+	os.Setenv("BUILDTEST", s.buildTestDir)
 
 	s.stdin = bytes.NewBuffer(nil)
 	s.stdout = bytes.NewBuffer(nil)
@@ -149,20 +149,20 @@ func (s *BuildtestSuite) TestRunOptionApplyDefaults(c *C) {
 	os.Setenv("BUILDTEST_SOCKET", "")
 	os.Setenv("BUILDTEST_BASEURL", "")
 	r := cli.WithDefaultRunOptions(nil)
-	c.Assert(r.PebbleDir, Equals, "/var/lib/buildtest/default")
+	c.Assert(r.BuildTestDir, Equals, "/var/lib/buildtest/default")
 	c.Assert(r.ClientConfig.Socket, Equals, "/var/lib/buildtest/default/.buildtest.socket")
 	c.Assert(r.ClientConfig.BaseURL, Equals, "")
 
 	os.Setenv("BUILDTEST", "/foo")
 	r = cli.WithDefaultRunOptions(nil)
-	c.Assert(r.PebbleDir, Equals, "/foo")
+	c.Assert(r.BuildTestDir, Equals, "/foo")
 	c.Assert(r.ClientConfig.Socket, Equals, "/foo/.buildtest.socket")
 	c.Assert(r.ClientConfig.BaseURL, Equals, "")
 
 	os.Setenv("BUILDTEST", "/bar")
 	os.Setenv("BUILDTEST_SOCKET", "/path/to/socket")
 	r = cli.WithDefaultRunOptions(nil)
-	c.Assert(r.PebbleDir, Equals, "/bar")
+	c.Assert(r.BuildTestDir, Equals, "/bar")
 	c.Assert(r.ClientConfig.Socket, Equals, "/path/to/socket")
 	c.Assert(r.ClientConfig.BaseURL, Equals, "")
 

@@ -54,11 +54,11 @@ func TestMain(m *testing.M) {
 	os.Exit(exitCode)
 }
 
-// createLayer creates a layer file with layerYAML under the directory "pebbleDir/layers".
-func createLayer(t *testing.T, pebbleDir, layerFileName, layerYAML string) {
+// createLayer creates a layer file with layerYAML under the directory "buildTestDir/layers".
+func createLayer(t *testing.T, buildTestDir, layerFileName, layerYAML string) {
 	t.Helper()
 
-	layersDir := filepath.Join(pebbleDir, "layers")
+	layersDir := filepath.Join(buildTestDir, "layers")
 	err := os.MkdirAll(layersDir, 0o755)
 	if err != nil {
 		t.Fatalf("Cannot create layers directory: %v", err)
@@ -71,17 +71,17 @@ func createLayer(t *testing.T, pebbleDir, layerFileName, layerYAML string) {
 	}
 }
 
-// pebbleDaemon starts the pebble daemon with optional arguments
+// buildtestDaemon starts the buildtest daemon with optional arguments
 // and returns two channels yielding the lines from standard output and
 // standard error. The runOrEnter argument should be "run" or "enter".
-func pebbleDaemon(t *testing.T, pebbleDir string, runOrEnter string, args ...string) (stdoutCh chan string, stderrCh chan string) {
+func buildtestDaemon(t *testing.T, buildTestDir string, runOrEnter string, args ...string) (stdoutCh chan string, stderrCh chan string) {
 	t.Helper()
 
 	stdoutCh = make(chan string)
 	stderrCh = make(chan string)
 
 	cmd := exec.Command(*buildtestBin, append([]string{runOrEnter}, args...)...)
-	cmd.Env = append(os.Environ(), "BUILDTEST="+pebbleDir)
+	cmd.Env = append(os.Environ(), "BUILDTEST="+buildTestDir)
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -94,7 +94,7 @@ func pebbleDaemon(t *testing.T, pebbleDir string, runOrEnter string, args ...str
 
 	err = cmd.Start()
 	if err != nil {
-		t.Fatalf("Error starting 'pebble %s': %v", runOrEnter, err)
+		t.Fatalf("Error starting 'buildtest %s': %v", runOrEnter, err)
 	}
 
 	stopStdout := make(chan struct{})
@@ -112,7 +112,7 @@ func pebbleDaemon(t *testing.T, pebbleDir string, runOrEnter string, args ...str
 		select {
 		case <-waitDone:
 		default:
-			// If Pebble hasn't exited yet, send Ctrl-C signal. Don't error if
+			// If buildtest hasn't exited yet, send Ctrl-C signal. Don't error if
 			// it fails (in case it's just terminated).
 			cmd.Process.Signal(os.Interrupt)
 			<-waitDone
@@ -226,21 +226,21 @@ func waitForTermination(t *testing.T, ch <-chan string, timeout time.Duration) {
 				return
 			}
 		case <-timeoutCh:
-			t.Fatal("timed out waiting for pebble to terminate (channel to drain)")
+			t.Fatal("timed out waiting for buildtest to terminate (channel to drain)")
 		}
 	}
 }
 
-// runPebbleCommand runs a pebble command and returns the standard output.
-func runPebbleCommand(t *testing.T, pebbleDir string, args ...string) string {
+// runBuildtestCommand runs a buildtest command and returns the standard output.
+func runBuildtestCommand(t *testing.T, buildTestDir string, args ...string) string {
 	t.Helper()
 
 	cmd := exec.Command(*buildtestBin, args...)
-	cmd.Env = append(os.Environ(), "BUILDTEST="+pebbleDir)
+	cmd.Env = append(os.Environ(), "BUILDTEST="+buildTestDir)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("error executing pebble command: %v\nOutput:\n%s", err, output)
+		t.Fatalf("error executing buildtest command: %v\nOutput:\n%s", err, output)
 	}
 
 	return string(output)

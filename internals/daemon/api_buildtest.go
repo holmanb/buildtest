@@ -85,8 +85,8 @@ func v1PostBuildTest(c *Command, req *http.Request, user *UserState) Response {
 	}
 
 	// Save the tarball to a temporary file.
-	pebbleDir := c.d.options.Dir
-	tempDir := filepath.Join(pebbleDir, "build-test")
+	buildTestDir := c.d.options.Dir
+	tempDir := filepath.Join(buildTestDir, "build-test")
 	err = os.MkdirAll(tempDir, 0o755)
 	if err != nil {
 		return ServerError("cannot create temp directory: %v", err)

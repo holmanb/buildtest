@@ -405,15 +405,15 @@ For another example:
 The form of the phrases used in error messages should be consistent with other code in the same function or even the same module. For example, if existing code uses:
 
 ```go
-if !osutil.IsDir(o.pebbleDir) {
-	return nil, fmt.Errorf("directory %q does not exist", o.pebbleDir)
+if !osutil.IsDir(o.buildTestDir) {
+	return nil, fmt.Errorf("directory %q does not exist", o.buildTestDir)
 }
 ```
 
 When adding a new error for no write permissions:
 
-- Avoid: `fmt.Errorf("no write permission in directory %q", o.pebbleDir)`
-- Prefer: `fmt.Errorf("directory %q not writeable, o.pebbleDir)` (Follow existing convention)
+- Avoid: `fmt.Errorf("no write permission in directory %q", o.buildTestDir)`
+- Prefer: `fmt.Errorf("directory %q not writeable, o.buildTestDir)` (Follow existing convention)
 
 ### Use `errors.Is`
 
@@ -552,12 +552,12 @@ If a test should not continue at a certain point, use `t.Fatalf` instead of `t.E
 Complex tests should have a verbose comment describing what they are testing. Example:
 
 ```go
-// TestCreateDirs tests that Pebble will create the Pebble directory on startup
+// TestCreateDirs tests that Buildtest will create the buildtest directory on startup
 // with the `--create-dirs` option.
 func TestCreateDirs(t *testing.T) {
 	tmpDir := t.TempDir()
-	pebbleDir := filepath.Join(tmpDir, "pebble")
-	_, stderrCh := pebbleDaemon(t, pebbleDir, "run", "--create-dirs")
+	buildTestDir := filepath.Join(tmpDir, "buildtest")
+	_, stderrCh := buildtestDaemon(t, buildTestDir, "run", "--create-dirs")
 	// ...
 }
 ```

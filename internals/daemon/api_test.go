@@ -36,7 +36,7 @@ var _ = check.Suite(&apiSuite{})
 type apiSuite struct {
 	d *Daemon
 
-	pebbleDir string
+	buildTestDir string
 
 	vars map[string]string
 
@@ -51,7 +51,7 @@ func (s *apiSuite) SetUpTest(c *check.C) {
 	}
 
 	s.restoreMuxVars = FakeMuxVars(s.muxVars)
-	s.pebbleDir = c.MkDir()
+	s.buildTestDir = c.MkDir()
 }
 
 func (s *apiSuite) TearDownTest(c *check.C) {
@@ -60,7 +60,7 @@ func (s *apiSuite) TearDownTest(c *check.C) {
 		s.overlordStarted = false
 	}
 	s.d = nil
-	s.pebbleDir = ""
+	s.buildTestDir = ""
 	s.restoreMuxVars()
 
 	err := reaper.Stop()
@@ -77,7 +77,7 @@ func (s *apiSuite) daemon(c *check.C) *Daemon {
 	if s.d != nil {
 		panic("called daemon() twice")
 	}
-	d, err := New(&Options{Dir: s.pebbleDir})
+	d, err := New(&Options{Dir: s.buildTestDir})
 	c.Assert(err, check.IsNil)
 	d.addRoutes()
 

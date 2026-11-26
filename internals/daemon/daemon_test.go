@@ -54,7 +54,7 @@ func Test(t *testing.T) {
 }
 
 type daemonSuite struct {
-	pebbleDir   string
+	buildTestDir   string
 	socketPath  string
 	httpAddress string
 	statePath   string
@@ -72,8 +72,8 @@ func (s *daemonSuite) SetUpTest(c *C) {
 	}
 
 	s.socketPath = ""
-	s.pebbleDir = c.MkDir()
-	s.statePath = filepath.Join(s.pebbleDir, cmd.StateFile)
+	s.buildTestDir = c.MkDir()
+	s.statePath = filepath.Join(s.buildTestDir, cmd.StateFile)
 	systemdSdNotify = func(notif string) error {
 		s.notified = append(s.notified, notif)
 		return nil
@@ -94,7 +94,7 @@ func (s *daemonSuite) TearDownTest(c *C) {
 
 func (s *daemonSuite) newDaemon(c *C) *Daemon {
 	d, err := New(&Options{
-		Dir:         s.pebbleDir,
+		Dir:         s.buildTestDir,
 		SocketPath:  s.socketPath,
 		HTTPAddress: s.httpAddress,
 	})
@@ -141,7 +141,7 @@ func (otherFakeExtension) ExtraManagers(o *overlord.Overlord) ([]overlord.StateM
 
 func (s *daemonSuite) TestExternalManager(c *C) {
 	d, err := New(&Options{
-		Dir:               s.pebbleDir,
+		Dir:               s.buildTestDir,
 		SocketPath:        s.socketPath,
 		HTTPAddress:       s.httpAddress,
 		OverlordExtension: &fakeExtension{},
@@ -160,7 +160,7 @@ func (s *daemonSuite) TestExternalManager(c *C) {
 
 func (s *daemonSuite) TestNoExtension(c *C) {
 	d, err := New(&Options{
-		Dir:         s.pebbleDir,
+		Dir:         s.buildTestDir,
 		SocketPath:  s.socketPath,
 		HTTPAddress: s.httpAddress,
 	})
@@ -172,7 +172,7 @@ func (s *daemonSuite) TestNoExtension(c *C) {
 
 func (s *daemonSuite) TestWrongExtension(c *C) {
 	d, err := New(&Options{
-		Dir:               s.pebbleDir,
+		Dir:               s.buildTestDir,
 		SocketPath:        s.socketPath,
 		HTTPAddress:       s.httpAddress,
 		OverlordExtension: &fakeExtension{},

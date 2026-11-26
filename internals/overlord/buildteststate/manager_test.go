@@ -33,15 +33,15 @@ var _ = Suite(&managerSuite{})
 func (s *managerSuite) TestNewManager(c *C) {
 	st := state.New(nil)
 	runner := state.NewTaskRunner(st)
-	pebbleDir := c.MkDir()
-	_ = buildteststate.NewManager(pebbleDir, runner)
+	buildTestDir := c.MkDir()
+	_ = buildteststate.NewManager(buildTestDir, runner)
 }
 
 func (s *managerSuite) TestBuildTestValidation(c *C) {
 	st := state.New(nil)
 	runner := state.NewTaskRunner(st)
-	pebbleDir := c.MkDir()
-	_ = buildteststate.NewManager(pebbleDir, runner)
+	buildTestDir := c.MkDir()
+	_ = buildteststate.NewManager(buildTestDir, runner)
 
 	st.Lock()
 	defer st.Unlock()
@@ -57,8 +57,8 @@ func (s *managerSuite) TestBuildTestValidation(c *C) {
 func (s *managerSuite) TestBuildTestCreatesTasks(c *C) {
 	st := state.New(nil)
 	runner := state.NewTaskRunner(st)
-	pebbleDir := c.MkDir()
-	_ = buildteststate.NewManager(pebbleDir, runner)
+	buildTestDir := c.MkDir()
+	_ = buildteststate.NewManager(buildTestDir, runner)
 
 	st.Lock()
 	defer st.Unlock()
@@ -91,20 +91,20 @@ func (s *managerSuite) TestBuildTestCreatesTasks(c *C) {
 }
 
 func (s *managerSuite) TestTempDir(c *C) {
-	pebbleDir := "/var/lib/pebble"
+	buildTestDir := "/var/lib/buildtest"
 	st := state.New(nil)
 	runner := state.NewTaskRunner(st)
-	mgr := buildteststate.NewManager(pebbleDir, runner)
+	mgr := buildteststate.NewManager(buildTestDir, runner)
 
-	expected := filepath.Join(pebbleDir, "build-test", "1")
+	expected := filepath.Join(buildTestDir, "build-test", "1")
 	c.Check(mgr.TempDir("1"), Equals, expected)
 }
 
 func (s *managerSuite) TestRegisterExecution(c *C) {
 	st := state.New(nil)
 	runner := state.NewTaskRunner(st)
-	pebbleDir := c.MkDir()
-	mgr := buildteststate.NewManager(pebbleDir, runner)
+	buildTestDir := c.MkDir()
+	mgr := buildteststate.NewManager(buildTestDir, runner)
 
 	// Register an execution for a build task.
 	wsIDs := []string{buildteststate.WsBuildStdoutExport, buildteststate.WsBuildStderrExport}
@@ -124,8 +124,8 @@ func (s *managerSuite) TestRegisterExecution(c *C) {
 func (s *managerSuite) TestUnregisterExecution(c *C) {
 	st := state.New(nil)
 	runner := state.NewTaskRunner(st)
-	pebbleDir := c.MkDir()
-	mgr := buildteststate.NewManager(pebbleDir, runner)
+	buildTestDir := c.MkDir()
+	mgr := buildteststate.NewManager(buildTestDir, runner)
 
 	wsIDs := []string{buildteststate.WsBuildStdoutExport, buildteststate.WsBuildStderrExport}
 	mgr.RegisterExecutionForTest("task-1", buildteststate.BuildTaskKind, wsIDs, false, false, 0, 0)
@@ -145,8 +145,8 @@ func (s *managerSuite) TestUnregisterExecution(c *C) {
 func (s *managerSuite) TestWaitIOConnectedTimeout(c *C) {
 	st := state.New(nil)
 	runner := state.NewTaskRunner(st)
-	pebbleDir := c.MkDir()
-	mgr := buildteststate.NewManager(pebbleDir, runner)
+	buildTestDir := c.MkDir()
+	mgr := buildteststate.NewManager(buildTestDir, runner)
 
 	wsIDs := []string{buildteststate.WsBuildStdoutExport, buildteststate.WsBuildStderrExport}
 	e := mgr.RegisterExecutionForTest("task-1", buildteststate.BuildTaskKind, wsIDs, false, false, 0, 0)
@@ -161,8 +161,8 @@ func (s *managerSuite) TestWaitIOConnectedTimeout(c *C) {
 func (s *managerSuite) TestWaitIOConnectedSuccess(c *C) {
 	st := state.New(nil)
 	runner := state.NewTaskRunner(st)
-	pebbleDir := c.MkDir()
-	mgr := buildteststate.NewManager(pebbleDir, runner)
+	buildTestDir := c.MkDir()
+	mgr := buildteststate.NewManager(buildTestDir, runner)
 
 	wsIDs := []string{buildteststate.WsBuildStdoutExport, buildteststate.WsBuildStderrExport}
 	e := mgr.RegisterExecutionForTest("task-1", buildteststate.BuildTaskKind, wsIDs, false, false, 0, 0)
@@ -194,8 +194,8 @@ func (s *managerSuite) TestInteractiveWebsocketConstants(c *C) {
 func (s *managerSuite) TestRegisterExecutionInteractive(c *C) {
 	st := state.New(nil)
 	runner := state.NewTaskRunner(st)
-	pebbleDir := c.MkDir()
-	mgr := buildteststate.NewManager(pebbleDir, runner)
+	buildTestDir := c.MkDir()
+	mgr := buildteststate.NewManager(buildTestDir, runner)
 
 	// Register an execution with interactive mode.
 	wsIDs := []string{buildteststate.WsBuildStdioExport, buildteststate.WsBuildControlExport}
@@ -215,8 +215,8 @@ func (s *managerSuite) TestRegisterExecutionInteractive(c *C) {
 func (s *managerSuite) TestRegisterExecutionNonInteractive(c *C) {
 	st := state.New(nil)
 	runner := state.NewTaskRunner(st)
-	pebbleDir := c.MkDir()
-	mgr := buildteststate.NewManager(pebbleDir, runner)
+	buildTestDir := c.MkDir()
+	mgr := buildteststate.NewManager(buildTestDir, runner)
 
 	// Register an execution without interactive mode (default).
 	wsIDs := []string{buildteststate.WsBuildStdoutExport, buildteststate.WsBuildStderrExport}
@@ -236,8 +236,8 @@ func (s *managerSuite) TestConnectTimeout(c *C) {
 func (s *managerSuite) TestEnsure(c *C) {
 	st := state.New(nil)
 	runner := state.NewTaskRunner(st)
-	pebbleDir := c.MkDir()
-	mgr := buildteststate.NewManager(pebbleDir, runner)
+	buildTestDir := c.MkDir()
+	mgr := buildteststate.NewManager(buildTestDir, runner)
 
 	err := mgr.Ensure()
 	c.Assert(err, IsNil)
@@ -246,8 +246,8 @@ func (s *managerSuite) TestEnsure(c *C) {
 func (s *managerSuite) TestCleanupBuildTask(c *C) {
 	st := state.New(nil)
 	runner := state.NewTaskRunner(st)
-	pebbleDir := c.MkDir()
-	mgr := buildteststate.NewManager(pebbleDir, runner)
+	buildTestDir := c.MkDir()
+	mgr := buildteststate.NewManager(buildTestDir, runner)
 
 	st.Lock()
 	args := &buildteststate.BuildTestArgs{
@@ -281,8 +281,8 @@ func (s *managerSuite) TestCleanupBuildTask(c *C) {
 func (s *managerSuite) TestCleanupRunTask(c *C) {
 	st := state.New(nil)
 	runner := state.NewTaskRunner(st)
-	pebbleDir := c.MkDir()
-	mgr := buildteststate.NewManager(pebbleDir, runner)
+	buildTestDir := c.MkDir()
+	mgr := buildteststate.NewManager(buildTestDir, runner)
 
 	st.Lock()
 	args := &buildteststate.BuildTestArgs{
@@ -298,7 +298,7 @@ func (s *managerSuite) TestCleanupRunTask(c *C) {
 	st.Unlock()
 
 	// Create the temp directory that cleanup should remove.
-	tempDir := filepath.Join(pebbleDir, "build-test", changeID)
+	tempDir := filepath.Join(buildTestDir, "build-test", changeID)
 	err = os.MkdirAll(tempDir, 0o755)
 	c.Assert(err, IsNil)
 

@@ -55,7 +55,7 @@ var websocketUpgrader = websocket.Upgrader{
 
 // BuildTestManager manages build-test tasks.
 type BuildTestManager struct {
-	pebbleDir string
+	buildTestDir string
 
 	executions     map[string]*buildTestExecution
 	executionsCond *sync.Cond
@@ -77,9 +77,9 @@ type buildTestExecution struct {
 }
 
 // NewManager creates a new BuildTestManager.
-func NewManager(pebbleDir string, runner *state.TaskRunner) *BuildTestManager {
+func NewManager(buildTestDir string, runner *state.TaskRunner) *BuildTestManager {
 	manager := &BuildTestManager{
-		pebbleDir:      pebbleDir,
+		buildTestDir:      buildTestDir,
 		executions:     make(map[string]*buildTestExecution),
 		executionsCond: sync.NewCond(&sync.Mutex{}),
 	}
@@ -102,7 +102,7 @@ func NewManager(pebbleDir string, runner *state.TaskRunner) *BuildTestManager {
 		change := task.Change()
 		st.Unlock()
 
-		tempDir := filepath.Join(manager.pebbleDir, "build-test", change.ID())
+		tempDir := filepath.Join(manager.buildTestDir, "build-test", change.ID())
 		err := os.RemoveAll(tempDir)
 		if err != nil {
 			logger.Noticef("Cannot remove build-test temp dir %q: %v", tempDir, err)
@@ -120,7 +120,7 @@ func (m *BuildTestManager) Ensure() error {
 
 // tempDir returns the temporary directory path for a given change ID.
 func (m *BuildTestManager) tempDir(changeID string) string {
-	return filepath.Join(m.pebbleDir, "build-test", changeID)
+	return filepath.Join(m.buildTestDir, "build-test", changeID)
 }
 
 // registerExecution creates a buildTestExecution for the given task and

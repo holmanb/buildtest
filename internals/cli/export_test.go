@@ -62,7 +62,7 @@ var (
 	ColorColorTable = color
 	NoEscColorTable = noesc
 
-	MaybeCopyPebbleDir = maybeCopyPebbleDir
+	MaybeCopyBuildTestDir = maybeCopyBuildTestDir
 
 	WithDefaultRunOptions = withDefaultRunOptions
 
@@ -119,6 +119,6 @@ func ParserForTest() *flags.Parser {
 	return Parser(&ParserOptions{
 		Client:     Client(),
 		SocketPath: runOpts.ClientConfig.Socket,
-		PebbleDir:  runOpts.PebbleDir,
+		BuildTestDir:  runOpts.BuildTestDir,
 	})
 }

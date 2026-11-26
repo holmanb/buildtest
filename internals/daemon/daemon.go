@@ -783,7 +783,7 @@ func New(opts *Options) (*Daemon, error) {
 	}
 
 	ovldOptions := overlord.Options{
-		PebbleDir:      opts.Dir,
+		BuildTestDir:      opts.Dir,
 		RestartHandler: d,
 		ServiceOutput:  opts.ServiceOutput,
 		Extension:      opts.OverlordExtension,

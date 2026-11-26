@@ -121,7 +121,7 @@ func (m *BuildTestManager) RunCleanupForTest(task *state.Task) error {
 		st.Lock()
 		change := task.Change()
 		st.Unlock()
-		tempDir := filepath.Join(m.pebbleDir, "build-test", change.ID())
+		tempDir := filepath.Join(m.buildTestDir, "build-test", change.ID())
 		err := os.RemoveAll(tempDir)
 		if err != nil {
 			return err

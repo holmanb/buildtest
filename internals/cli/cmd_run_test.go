@@ -34,7 +34,7 @@ func (s *BuildtestSuite) TestMaybeCopyPebbleDir(c *C) {
 	c.Assert(err, IsNil)
 
 	dst := c.MkDir()
-	err = cli.MaybeCopyPebbleDir(dst, src)
+	err = cli.MaybeCopyBuildTestDir(dst, src)
 	c.Assert(err, IsNil)
 
 	got := map[string]bool{}
@@ -79,7 +79,7 @@ func (s *BuildtestSuite) TestMaybeCopyPebbleDirNoCopy(c *C) {
 	err = os.WriteFile(path.Join(dst, "a.yaml"), []byte("# no\n"), 0666)
 	c.Assert(err, IsNil)
 
-	err = cli.MaybeCopyPebbleDir(dst, src)
+	err = cli.MaybeCopyBuildTestDir(dst, src)
 	c.Assert(err, IsNil)
 
 	got := map[string]bool{}
@@ -110,7 +110,7 @@ func (s *BuildtestSuite) TestMaybeCopyPebbleDirSourceNotExist(c *C) {
 	err := os.Mkdir(dst, 0o700)
 	c.Assert(err, IsNil)
 	src := path.Join(tmpDir, "not-exist")
-	err = cli.MaybeCopyPebbleDir(dst, src)
+	err = cli.MaybeCopyBuildTestDir(dst, src)
 	c.Assert(err, IsNil)
 }
 
@@ -122,7 +122,7 @@ func (s *BuildtestSuite) TestMaybeCopyPebbleDirSourceNotADirectory(c *C) {
 	src := path.Join(tmpDir, "file")
 	err = os.WriteFile(src, nil, 0o666)
 	c.Assert(err, IsNil)
-	err = cli.MaybeCopyPebbleDir(dst, src)
+	err = cli.MaybeCopyBuildTestDir(dst, src)
 	c.Assert(err, ErrorMatches, ".*not a directory.*")
 }
 
