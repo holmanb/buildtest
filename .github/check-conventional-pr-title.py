@@ -52,7 +52,7 @@ def _main() -> None:
             f'PR title does not follow Conventional Commits format.\n'
             f'Expected: <type>[(scope)][!]: <description>\n'
             f'Got: {title!r}\n'
-            'Read more: https://github.com/canonical/pebble/blob/master/HACKING.md#commits',
+            'Read more: https://github.com/holmanb/buildtest/blob/master/HACKING.md#commits',
             file=sys.stderr,
         )
         sys.exit(1)
@@ -63,7 +63,7 @@ def _main() -> None:
             f'Invalid type {commit_type!r} in PR title.\n'
             f'Valid types: {", ".join(sorted(_TYPES))}\n'
             f'Got: {title!r}\n'
-            'Read more: https://github.com/canonical/pebble/blob/master/HACKING.md#commits',
+            'Read more: https://github.com/holmanb/buildtest/blob/master/HACKING.md#commits',
             file=sys.stderr,
         )
         sys.exit(1)

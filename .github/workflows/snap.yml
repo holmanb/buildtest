@@ -1,4 +1,4 @@
-name: Pebble snap
+name: Buildtest snap
 
 on:
   pull_request:
@@ -26,7 +26,7 @@ jobs:
     # So this job builds the snap locally, and not via LP.
     if: github.event_name == 'pull_request'
     steps:
-      - name: Checkout Pebble repo
+      - name: Checkout Buildtest repo
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
         with:
           persist-credentials: false
@@ -72,7 +72,7 @@ jobs:
       matrix:
         arch: ["amd64", "arm64", "armhf", "ppc64el", "riscv64", "s390x"]
     steps:
-      - name: Checkout Pebble repo
+      - name: Checkout Buildtest repo
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7
         with:
           persist-credentials: false
@@ -148,7 +148,7 @@ jobs:
           pattern: buildtest-snap-amd64
 
       - id: get-snap
-        run: echo "filename=$(echo pebble*${TEST_ON}*.snap)" >> $GITHUB_OUTPUT
+        run: echo "filename=$(echo buildtest*${TEST_ON}*.snap)" >> $GITHUB_OUTPUT
 
       - name: Install and test snap
         env:
@@ -158,10 +158,10 @@ jobs:
           sudo snap install --dangerous --classic "$SNAP_FILENAME"
 
           # Make sure it is installed
-          pebble version --client
+          buildtest version --client
 
           # Run smoke test
-          pebble enter --create-dirs exec echo Hello | grep Hello
+          buildtest enter --create-dirs exec echo Hello | grep Hello
 
   release:
     runs-on: ubuntu-latest
@@ -180,7 +180,7 @@ jobs:
       - id: get-snap
         env:
           ARCH: ${{ matrix.arch }}
-        run: echo "filename=$(echo pebble*${ARCH}*.snap)" >> $GITHUB_OUTPUT
+        run: echo "filename=$(echo buildtest*${ARCH}*.snap)" >> $GITHUB_OUTPUT
 
       - name: Release snap to ${{ env.DEFAULT_TRACK }}/${{ env.DEFAULT_RISK }}
         uses: snapcore/action-publish@214b86e5ca036ead1668c79afb81e550e6c54d40  # v1
@@ -213,7 +213,7 @@ jobs:
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
         run: |
-          snapcraft status pebble \
+          snapcraft status buildtest \
             --track ${{ env.DEFAULT_TRACK }} --arch ${{ matrix.arch }} \
             | awk 'NR==1 { pos = index($0, "Revision") }  /edge/ { print 0+substr($0, pos) }' \
             > revision.txt
@@ -229,11 +229,6 @@ jobs:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
           REVISION: ${{ steps.get-snap.outputs.revision }}
         run: |
-          snapcraft release pebble \
+          snapcraft release buildtest \
             "${REVISION}" \
             "${TO_TRACK}/${TO_RISK}"
-
-  sbom-secscan:
-    needs: [release]
-    if: github.event_name == 'release' && needs.release.result == 'success' && always()
-    uses: ./.github/workflows/sbom-secscan.yaml
