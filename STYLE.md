@@ -1,6 +1,6 @@
-# Pebble Go style guide
+# Buildtest Go style guide
 
-This is the Go style guide we use for the Pebble project. It's also the style we're converging on for other Go projects maintained by the Charm Tech team.
+This is the Go style guide we use for the Buildtest project. It's also the style we're converging on for other Go projects maintained by the author.
 
 New code should follow these guidelines, unless there's a good reason not to. Sometimes existing code doesn't follow these, but we're happy for it to be updated to do so (either all at once, or as you change nearby code).
 
@@ -398,7 +398,7 @@ For example, if the user input layer label is `pebble-test` but pebble-* is rese
 For another example:
 
 - Avoid: `fmt.Println("Setup failed with error:", err)`
-- Prefer: `fmt.Println("Cannot build pebble binary:", err)`
+- Prefer: `fmt.Println("Cannot build buildtest binary:", err)`
 
 ### Be consistent
 
@@ -507,7 +507,7 @@ Put effort into test names. Use meaningful, precise names that follow the conven
 
 Use `foo`, `bar`, `baz`, `qux`, `quux`, and other metasyntactic variables and placeholder names in tests.
 
-However, check existing code and be consistent: If existing tests use "alice" and "bob" or meaningful variable names like `pebble-service-name`, follow the convention. Conversely, do not use very specific names that actually mean something when it's just a generic name.
+However, check existing code and be consistent: If existing tests use "alice" and "bob" or meaningful variable names like `buildtest-service-name`, follow the convention. Conversely, do not use very specific names that actually mean something when it's just a generic name.
 
 ### Copy-paste
 
