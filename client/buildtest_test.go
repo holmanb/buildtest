@@ -282,30 +282,3 @@ func (cs *clientSuite) TestBuildTestInteractiveOptions(c *C) {
 	c.Check(opts.Interactive, Equals, true)
 	c.Check(opts.Terminal, Equals, true)
 }
-
-func (cs *clientSuite) TestBuildTestProcessSendSignal(c *C) {
-	// Test that BuildTestProcess has SendSignal method.
-	controlWs := &testBuildTestWebsocket{}
-	p := &client.BuildTestProcess{
-		// We can't easily construct a full BuildTestProcess outside of
-		// BuildTestInteractive, but we can test the signal/resize
-		// encoding by using the control websocket directly.
-	}
-	_ = p
-	_ = controlWs
-}
-
-type testBuildTestWebsocket struct {
-	reads  []testBuildTestRead
-	writes []testBuildTestWrite
-}
-
-type testBuildTestRead struct {
-	messageType int
-	data        string
-}
-
-type testBuildTestWrite struct {
-	messageType int
-	data        string
-}

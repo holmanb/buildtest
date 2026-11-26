@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"golang.org/x/term"
@@ -26,12 +25,11 @@ func Test(t *testing.T) {
 
 type BasePebbleSuite struct {
 	testutil.BaseTest
-	stdin        *bytes.Buffer
-	stdout       *bytes.Buffer
-	stderr       *bytes.Buffer
-	password     string
-	pebbleDir    string
-	cliStatePath string
+	stdin     *bytes.Buffer
+	stdout    *bytes.Buffer
+	stderr    *bytes.Buffer
+	password  string
+	pebbleDir string
 
 	AuthFile string
 }
@@ -65,7 +63,6 @@ func (s *BasePebbleSuite) SetUpTest(c *C) {
 	})
 	configHome := c.MkDir()
 	os.Setenv("XDG_CONFIG_HOME", configHome)
-	s.cliStatePath = filepath.Join(configHome, "buildtest", "cli.json")
 }
 
 func (s *BasePebbleSuite) TearDownTest(c *C) {
@@ -183,39 +180,4 @@ func (s *PebbleSuite) TestRunOptionApplyDefaults(c *C) {
 		ClientConfig: &client.Config{BaseURL: "https://other:8443"},
 	})
 	c.Assert(r.ClientConfig.BaseURL, Equals, "https://other:8443")
-}
-
-func (s *BasePebbleSuite) readCLIState(c *C) map[string]any {
-	data, err := os.ReadFile(s.cliStatePath)
-	c.Assert(err, IsNil)
-	var fullState map[string]any
-	err = json.Unmarshal(data, &fullState)
-	c.Assert(err, IsNil)
-
-	socketMap, ok := fullState["buildtest"].(map[string]any)
-	if !ok {
-		c.Fatalf("expected socket map, got %#v", fullState["buildtest"])
-	}
-
-	r := cli.WithDefaultRunOptions(nil)
-	v, ok := socketMap[r.ClientConfig.Socket]
-	if !ok {
-		c.Fatalf("expected state map, got %#v", socketMap[r.ClientConfig.Socket])
-	}
-	return v.(map[string]any)
-}
-
-func (s *BasePebbleSuite) writeCLIState(c *C, st map[string]any) {
-	r := cli.WithDefaultRunOptions(nil)
-	fullState := map[string]any{
-		"buildtest": map[string]any{
-			r.ClientConfig.Socket: st,
-		},
-	}
-	err := os.MkdirAll(filepath.Dir(s.cliStatePath), 0o700)
-	c.Assert(err, IsNil)
-	data, err := json.Marshal(fullState)
-	c.Assert(err, IsNil)
-	err = os.WriteFile(s.cliStatePath, data, 0o600)
-	c.Assert(err, IsNil)
 }

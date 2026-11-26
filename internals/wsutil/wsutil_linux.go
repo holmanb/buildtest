@@ -20,38 +20,10 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"github.com/gorilla/websocket"
 	"golang.org/x/sys/unix"
 
 	"github.com/holmanb/buildtest/internals/logger"
 )
-
-// MirrorToWebsocket mirrors PTY output from r (file descriptor fd) to the websocket.
-func MirrorToWebsocket(conn MessageWriter, r io.ReadCloser, exited chan struct{}, fd int) {
-	in := ExecReaderToChannel(r, -1, exited, fd)
-	for {
-		buf, ok := <-in
-		if !ok {
-			_ = r.Close()
-			logger.Debugf("Sending write barrier")
-			err := conn.WriteMessage(websocket.TextMessage, endCommandJSON)
-			if err != nil {
-				logger.Debugf("Got err writing barrier %s", err)
-			}
-			return
-		}
-
-		err := conn.WriteMessage(websocket.BinaryMessage, buf)
-		if err != nil {
-			logger.Debugf("Got err writing %s", err)
-			break
-		}
-	}
-
-	closeMsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
-	conn.WriteMessage(websocket.CloseMessage, closeMsg)
-	r.Close()
-}
 
 // Extensively commented directly in the code. Please leave the comments!
 // Looking at this in a couple of months noone will know why and how this works

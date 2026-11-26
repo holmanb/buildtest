@@ -53,11 +53,6 @@ type cmdBuildTest struct {
 	} `positional-args:"yes"`
 }
 
-type buildTestFormat struct {
-	Build client.BuildResult  `json:"build" yaml:"build"`
-	Run   *client.RunResult   `json:"run,omitempty" yaml:"run,omitempty"`
-}
-
 func init() {
 	AddCommand(&CmdInfo{
 		Name:        "build-test",
@@ -290,14 +285,12 @@ func buildTestControlHandler(process *client.BuildTestProcess, terminal bool, st
 			err = process.SendResize(width, height)
 			if err != nil {
 				logger.Debugf("Cannot set terminal size: %v", err)
-				break
 			}
 		case unix.SIGHUP:
 			logger.Debugf("Received 'SIGHUP' signal, forwarding and exiting")
 			err := process.SendSignal("SIGHUP")
 			if err != nil {
 				logger.Debugf("Cannot forward signal '%s': %v", sig, err)
-				break
 			}
 			close(sighup)
 		case unix.SIGTERM, unix.SIGINT, unix.SIGQUIT, unix.SIGABRT,
@@ -307,7 +300,6 @@ func buildTestControlHandler(process *client.BuildTestProcess, terminal bool, st
 			err := process.SendSignal(unix.SignalName(sig.(unix.Signal)))
 			if err != nil {
 				logger.Debugf("Cannot forward signal '%s': %v", sig, err)
-				break
 			}
 		}
 	}
