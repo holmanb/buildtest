@@ -32,7 +32,7 @@ var _ = Suite(&ringBufferSuite{})
 func (s *ringBufferSuite) TestWrites(c *C) {
 	rb := servicelog.NewRingBuffer(10)
 
-	n, err := fmt.Fprint(rb, "pebbletron")
+	n, err := fmt.Fprint(rb, "buildtest!")
 	c.Assert(err, IsNil)
 	c.Assert(n, Equals, 10)
 

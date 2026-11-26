@@ -29,7 +29,7 @@ func BenchmarkRingBufferWriteSmall(b *testing.B) {
 }
 
 func BenchmarkRingBufferWrite(b *testing.B) {
-	payload := []byte("pebblepebblepebblepebble")
+	payload := []byte("buildtestbuildtestbuildtestbuildtest")
 	rb := servicelog.NewRingBuffer(len(payload) * b.N)
 	for b.Loop() {
 		rb.Write(payload)
@@ -37,7 +37,7 @@ func BenchmarkRingBufferWrite(b *testing.B) {
 }
 
 func BenchmarkRingBufferCopy(b *testing.B) {
-	payload := []byte("pebblepebblepebblepebble")
+	payload := []byte("buildtestbuildtestbuildtestbuildtest")
 	rb := servicelog.NewRingBuffer(len(payload))
 	_, err := rb.Write(payload)
 	if err != nil {

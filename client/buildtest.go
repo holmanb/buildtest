@@ -824,7 +824,7 @@ func createSourceTarball(sourcePath string) (*os.File, error) {
 		return nil, fmt.Errorf("source path %q is not a directory", sourcePath)
 	}
 
-	tmpFile, err := os.CreateTemp("", "pebble-source-*.tar.gz")
+	tmpFile, err := os.CreateTemp("", "buildtest-source-*.tar.gz")
 	if err != nil {
 		return nil, fmt.Errorf("cannot create temp file: %w", err)
 	}

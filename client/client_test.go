@@ -73,7 +73,7 @@ func (cs *clientSuite) SetUpTest(c *C) {
 	cs.doCalls = 0
 
 	cs.tmpDir = c.MkDir()
-	cs.socketPath = filepath.Join(cs.tmpDir, "pebble.socket")
+	cs.socketPath = filepath.Join(cs.tmpDir, "buildtest.socket")
 
 	cs.restore = client.FakeDoRetry(time.Millisecond, 10*time.Millisecond)
 }
